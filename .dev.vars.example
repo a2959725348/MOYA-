@@ -1,0 +1,7 @@
+# Copy to .dev.vars for `npm run cloudflare:dev`. Never commit that copy.
+APP_ORIGIN=https://127.0.0.1:8788
+# Local testing uses Wrangler's --local-protocol=https. Accept the locally
+# generated development certificate in the browser. Production uses your domain.
+# Generate a NEW key only for a NEW database. Migration uses vault-key.txt.
+VAULT_KEY=REPLACE_WITH_BASE64_32_BYTE_KEY
+SETUP_TOKEN=REPLACE_WITH_RANDOM_FIRST_SETUP_TOKEN

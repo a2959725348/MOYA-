@@ -1,0 +1,5 @@
+# Replace the example domain; Caddy automatically obtains an HTTPS certificate.
+workbench.example.com {
+  encode zstd gzip
+  reverse_proxy 127.0.0.1:4318
+}

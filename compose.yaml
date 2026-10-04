@@ -1,0 +1,17 @@
+services:
+  workbench:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 4318
+      DATA_DIR: /app/data
+      APP_ORIGIN: ${APP_ORIGIN:?Set your exact HTTPS domain origin}
+      SETUP_TOKEN: ${SETUP_TOKEN:?Set a random first setup token}
+    ports:
+      - "127.0.0.1:4318:4318"
+    volumes:
+      - workbench-data:/app/data
+volumes:
+  workbench-data:

@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "personal-workbench",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-10-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "APP_ORIGIN": "https://moyaiwork.com",
+    "AI_ALLOWED_HOSTS": ""
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "workbench",
+      // Replace this with the UUID printed by `wrangler d1 create workbench`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "cloudflare/migrations"
+    }
+  ]
+}

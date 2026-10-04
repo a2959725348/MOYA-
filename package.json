@@ -1,0 +1,61 @@
+{
+  "name": "personal-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite --host 127.0.0.1",
+    "dev:server": "node --watch server/index.mjs",
+    "build": "tsc -b && vite build",
+    "start": "node server/index.mjs",
+    "test": "npm run test:server && npm run test:agent && npm run test:ui && npm run test:cloudflare",
+    "test:server": "node --test tests/server*.test.mjs",
+    "test:agent": "node --test tests/agent*.test.mjs",
+    "test:ui": "vitest run",
+    "agent": "node agent/index.mjs",
+    "agent:once": "node agent/index.mjs --once",
+    "test:cloudflare": "node --test tests/cloudflare-*.test.mjs",
+    "cloudflare:login": "wrangler login",
+    "cloudflare:build": "npm run build && wrangler pages functions build --outdir .cache/cloudflare-build --compatibility-date=2026-10-04 --compatibility-flags=nodejs_compat",
+    "cloudflare:dev": "wrangler pages dev dist --local-protocol=https --ip=127.0.0.1",
+    "cloudflare:deploy": "wrangler pages deploy dist",
+    "cloudflare:db:local": "wrangler d1 execute workbench --local --file cloudflare/migrations/0001_initial.sql",
+    "cloudflare:db:remote": "wrangler d1 execute workbench --remote --file cloudflare/migrations/0001_initial.sql",
+    "cloudflare:export": "node scripts/cloudflare-export.mjs",
+    "cloudflare:package": "node scripts/cloudflare-package.mjs"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/static": "^8.3.0",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-slot": "^1.2.4",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.6.1",
+    "lucide-react": "^1.8.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "recharts": "^3.8.1",
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "miniflare": "^5.20261001.0-alpha",
+    "tailwindcss": "^4.2.2",
+    "typescript": "~6.0.3",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4",
+    "wrangler": "^4.147.0"
+  }
+}
