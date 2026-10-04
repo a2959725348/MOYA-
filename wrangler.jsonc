@@ -13,7 +13,7 @@
       "binding": "DB",
       "database_name": "workbench",
       // Replace this with the UUID printed by `wrangler d1 create workbench`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "f4fcc9a9-067c-43dd-9e2e-f89c05fa357a",
       "migrations_dir": "cloudflare/migrations"
     }
   ]
