@@ -1,7 +1,7 @@
 import { z } from 'zod';
+import { reserveAIRequest } from './ai-limits.mjs';
 const bodySchema=z.object({message:z.string().trim().min(1).max(12000),mode:z.enum(['tutor','plan','essay','reading','translation']),goalId:z.string().max(100).optional()}).strict();
 const usageSchema=z.object({prompt_tokens:z.number().int().nonnegative(),completion_tokens:z.number().int().nonnegative(),total_tokens:z.number().int().nonnegative()});
-const dayFormat=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'});
 const instructions={tutor:'用中文辅导学习，解释步骤并提问检查理解。',plan:'根据目标提供可执行学习计划，明确日期、科目和时间。',essay:'辅导英语写作，说明修改原因并给出练习。',reading:'辅导英语阅读，解释关键句式、词汇和证据。',translation:'辅导中英翻译，解释表达选择。'};
 export async function studyChat(request,reply,{store,vault,fetcher,settings}) {
   const body=bodySchema.parse(request.body);
@@ -9,13 +9,7 @@ export async function studyChat(request,reply,{store,vault,fetcher,settings}) {
   if(!key)return reply.code(400).send({error:'请先配置学习 AI 的 API 密钥'});
   const goal=body.goalId?store.find('goals',body.goalId):null;
   if(body.goalId&&!goal)return reply.code(400).send({error:'学习目标不存在'});
-  const day=dayFormat.format(new Date());
-  const knownCost=store.list('chatMessages').filter(record=>record.role==='assistant'&&record.currency===ai.currency&&typeof record.cost==='number'&&dayFormat.format(new Date(record.createdAt))===day).reduce((sum,record)=>sum+record.cost,0);
-  if(ai.dailyBudget!=null&&knownCost>=ai.dailyBudget)return reply.code(429).send({error:'今天已记录的估算费用达到预算阈值；此阈值在下一次调用前检查，不保证实际账单上限',code:'ESTIMATED_BUDGET_REACHED'});
-  const counter=store.get('chatCounter',{day,count:0});if(counter.day!==day){counter.day=day;counter.count=0;}
-  if(counter.count>=ai.dailyRequestLimit)return reply.code(429).send({error:'今天的 AI 请求次数已达到上限'});
-  // Reserve before the first asynchronous operation, so concurrent requests cannot bypass the cap.
-  counter.count++;store.set('chatCounter',counter);
+  try{store.transaction(()=>reserveAIRequest(store,ai));}catch(error){return reply.code(error.statusCode||500).send({error:error.message,...(error.code?{code:error.code}:{})});}
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
   const disconnect=()=>{if(!reply.raw.writableFinished)controller.abort();};reply.raw.on('close',disconnect);
   let response;

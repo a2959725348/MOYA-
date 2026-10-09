@@ -9,6 +9,8 @@ import { generateReminders } from '../server/reminders.mjs';
 import { transport,validateEndpoint } from './network.mjs';
 import { handleChat } from './chat.mjs';
 import { budgetDatabase } from './budget.mjs';
+import { saveDemand,importDemands,demandStoredSchema,restoreDemand,prepareAnalysis,requestDemandAnalysis,persistAnalysis,validationMessage } from '../server/demands.mjs';
+import { reserveAIRequest,recordAnalysisCost } from '../server/ai-limits.mjs';
 
 const publicPaths=new Set(['/api/auth/status','/api/auth/setup','/api/auth/login']);
 const writeMethods=new Set(['POST','PUT','PATCH','DELETE']);
@@ -104,8 +106,8 @@ async function routeLocal(store,env,requestInfo,body) {
   const recordMatch=path.match(/^\/api\/records\/([^/]+)(?:\/([^/]+))?$/);
   if(recordMatch&&Object.hasOwn(collections,recordMatch[1])){
     const [,collection,id]=recordMatch,schema=collections[collection];let result;
-    if(method==='POST'&&!id){if(store.list(collection).length>=10000)throw fail('记录数量达到上限',413);result={record:store.save(collection,schema.parse(body))};}
-    else if(method==='PATCH'&&id){const original=store.find(collection,id);if(!original)throw fail('记录不存在',404);const changes=z.record(z.string(),z.unknown()).parse(body);result={record:store.save(collection,schema.parse({...fields(original),...changes}),id)};}
+    if(method==='POST'&&!id){if(collection==='demands')result={record:saveDemand(store,body)};else{if(store.list(collection).length>=10000)throw fail('记录数量达到上限',413);result={record:store.save(collection,schema.parse(body))};}}
+    else if(method==='PATCH'&&id){const original=store.find(collection,id);if(!original)throw fail('记录不存在',404);const changes=z.record(z.string(),z.unknown()).parse(body);result={record:collection==='demands'?saveDemand(store,changes,id):store.save(collection,schema.parse({...fields(original),...changes}),id)};}
     else if(method==='DELETE'&&id){if(!store.remove(collection,id))throw fail('记录不存在',404);result={ok:true};}
     if(result){if(collection==='watchlist')invalidateMarket(store);return result;}
   }
@@ -122,15 +124,16 @@ async function routeLocal(store,env,requestInfo,body) {
     store.event('tasks',input.eventId,input.observedAt);store.set('syncObserved:tasks',input.observedAt);store.set('agentLastSeen',new Date().toISOString());return {ok:true,count:input.tasks.length};
   }
   if(method==='GET'&&path==='/api/backup')return {version:1,exportedAt:new Date().toISOString(),records:Object.fromEntries(Object.keys(collections).map(c=>[c,store.list(c)])),codex:snapshotState(store)};
+  if(method==='POST'&&path==='/api/demands/import')return importDemands(store,body);
   if(method==='POST'&&path==='/api/backup/restore'){
     const input=z.object({backup:z.object({version:z.literal(1),exportedAt:iso,records:z.record(z.string(),z.array(z.unknown()).max(10000)),codex:z.unknown().optional()}).strict(),mode:z.literal('merge')}).strict().parse(body),validated={};
     for(const [collection,list] of Object.entries(input.backup.records)){
       if(!Object.hasOwn(collections,collection))throw fail('备份包含未知集合');
-      validated[collection]=list.map(record=>{const meta=recordMeta.parse({id:record?.id,createdAt:record?.createdAt,updatedAt:record?.updatedAt});return {...collections[collection].parse(fields(record)),...meta};});
+      validated[collection]=list.map(record=>{const meta=recordMeta.parse({id:record?.id,createdAt:record?.createdAt,updatedAt:record?.updatedAt});return {...(collection==='demands'?demandStoredSchema:collections[collection]).parse(fields(record)),...meta};});
       if(new Set([...store.list(collection).map(r=>r.id),...validated[collection].map(r=>r.id)]).size>10000)throw fail('记录数量达到上限',413);
     }
     if(input.backup.codex!=null){const c=input.backup.codex;if(c.syncedAt!==null)codexSchema.parse({eventId:'backup',observedAt:c.syncedAt,rateLimits:c.rateLimits,rateLimitsByLimitId:c.rateLimitsByLimitId,dailyUsageBuckets:c.dailyUsageBuckets,...(c.error?{error:c.error}:{})});}
-    const counts={};for(const [collection,list] of Object.entries(validated)){counts[collection]=0;for(const record of list){const existing=store.find(collection,record.id);if(!existing||Date.parse(record.updatedAt)>Date.parse(existing.updatedAt)){store.save(collection,record,record.id,{preserveMetadata:true});counts[collection]++;}}}
+    const counts={};for(const [collection,list] of Object.entries(validated)){counts[collection]=0;for(const record of list){const existing=store.find(collection,record.id);if(!existing||Date.parse(record.updatedAt)>Date.parse(existing.updatedAt)){if(collection==='demands'){if(restoreDemand(store,record))counts[collection]++;}else{store.save(collection,record,record.id,{preserveMetadata:true});counts[collection]++;}}}}
     if(validated.watchlist)invalidateMarket(store);return {ok:true,counts};
   }
   throw fail('接口不存在',404);
@@ -184,6 +187,22 @@ export async function handleRequest(request,env,ctx={},options={}) {
     if(method==='POST'&&limits[path])await rateLimit(env.DB,`route:${path}:${ip}`,...limits[path]);
     const body=writeMethods.has(method)?await readBody(request):undefined;
     const fetcher=transport(env,{nativeFetch:options.fetcher});
+    const demandMatch=path.match(/^\/api\/demands\/([^/]+)\/analyze$/);
+    if(method==='POST'&&demandMatch){
+      z.object({}).strict().parse(body);
+      const accountingEvent=token();
+      const reserved=await withStore(env.DB,store=>{authorize(store,requestInfo);const result=prepareAnalysis(store,demandMatch[1],settings(store,new Vault(store,env.VAULT_KEY)).ai,new Vault(store,env.VAULT_KEY));reserveAIRequest(store,result.ai);return result;});
+      const analysis=await requestDemandAnalysis({...reserved,fetcher,signal:request.signal});
+      // Separate accounting from guarded answer attachment. The stable event
+      // identity prevents counting again if this database callback retries.
+      await withStore(env.DB,store=>recordAnalysisCost(store,reserved.record,analysis,accountingEvent));
+      const result=await withStore(env.DB,store=>{
+        authorize(store,requestInfo);
+        const current=store.find('demands',reserved.record.id);
+        if(!current||current.updatedAt!==reserved.record.updatedAt||current.text!==reserved.record.text||current.sourceUrl!==reserved.record.sourceUrl)throw fail('需求在分析期间已修改或删除，请重新分析',409);
+        return {record:persistAnalysis(store,reserved.record,analysis)};
+      });return json(result);
+    }
     if(method==='POST'&&path==='/api/study/chat'){
       const response=await handleChat(request,env,ctx,{body,fetcher,sessionHash});
       response.headers.set('Referrer-Policy','same-origin');response.headers.set('X-Frame-Options','DENY');
@@ -199,8 +218,8 @@ export async function handleRequest(request,env,ctx={},options={}) {
     const result=method==='POST'&&['/api/providers/balances/refresh','/api/market/refresh'].includes(path)?await providerRequest(requestInfo,env,fetcher,initial):await localRequest(initial,env,requestInfo,body);
     return result?.cookie?json(result.body,200,{'Set-Cookie':result.cookie}):json(result);
   }catch(error){
-    if(error instanceof ZodError)return json({error:'提交字段无效，请检查必填项、日期和数值',code:'VALIDATION_ERROR'},400);
+    if(error instanceof ZodError)return json({error:validationMessage(error),code:'VALIDATION_ERROR'},400);
     const status=error instanceof ConflictError?409:error.statusCode||500;
-    return json({error:status>=500?'服务暂时不可用':error instanceof ConflictError?'数据同时更新，请重试':error.message},status);
+    return json({error:status>=500?'服务暂时不可用':error instanceof ConflictError?'数据同时更新，请重试':error.message,...(error.code==='ESTIMATED_BUDGET_REACHED'?{code:error.code}:{})},status);
   }
 }

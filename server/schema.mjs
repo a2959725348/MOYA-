@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { demandInputSchema,consultationSchema } from './demands.mjs';
 const text=z.string().trim().max(1000), required=z.string().trim().min(1).max(500), long=z.string().max(30000);
 const number=z.number().finite().nonnegative(), nullableNumber=number.nullable().default(null);
 export const iso=z.string().max(50).refine(v=>/^\d{4}-\d\d-\d\dT/.test(v)&&Number.isFinite(Date.parse(v)),'Invalid ISO timestamp');
@@ -6,6 +7,8 @@ const nullableDate=iso.nullable().default(null);
 const day=z.string().regex(/^\d{4}-\d\d-\d\d$/).refine(v=>{const stamp=Date.parse(`${v}T00:00:00Z`);return Number.isFinite(stamp)&&new Date(stamp).toISOString().slice(0,10)===v;},'Invalid date');
 const url=z.string().max(2000).refine(v=>!v||/^https?:\/\//.test(v),'URL must be http(s)').default('');
 export const collections={
+  demands:demandInputSchema,
+  consultations:consultationSchema,
   accounts:z.object({name:required,provider:text.default(''),type:z.enum(['subscription','api']).default('api'),currency:z.enum(['CNY','USD','percent']).default('CNY'),balance:nullableNumber,total:nullableNumber,resetsAt:nullableDate,note:text.default(''),source:z.enum(['manual','api']).default('manual'),threshold:nullableNumber}).strict(),
   watchlist:z.object({symbol:z.string().trim().min(1).max(30).regex(/^[A-Za-z0-9.:-]+$/),name:text.default(''),market:z.enum(['US','CN']),targetAbove:nullableNumber,targetBelow:nullableNumber}).strict(),
   tasks:z.object({title:required,course:text.default(''),type:z.enum(['assignment','exam','other']).default('other'),dueAt:nullableDate,status:z.enum(['pending','completed']).default('pending'),url,note:text.default(''),source:z.enum(['manual','chaoxing']).default('manual'),platformId:z.string().min(1).max(200).optional()}).strict(),

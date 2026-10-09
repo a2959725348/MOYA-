@@ -1,5 +1,9 @@
 # 栖台 · 个人工作台
 
+本次更新将市场入口替换为「需求与咨询」：有权处理的文本样本分析、原文证据、人工审核与自愿咨询记录。使用现有 AI 配置和 Cloudflare 数据库，不重新迁移账号或密钥。小黑盒读取仍待授权评估。
+
+首版步骤见 [需求与咨询使用指南](docs/DEMAND-MVP.md)，最新验证状态见 [验证记录](docs/DEMAND-MVP-VERIFICATION.md)。以下保留原功能和部署背景。
+
 一个可自行部署、持续修改的个人工作台。React + TypeScript + Vite 前端，Node.js + Fastify + SQLite 后端，另有运行在已登录 Codex 电脑上的同步助手。电脑和手机通过同一服务器访问，业务记录保存在服务器数据库。
 
 现已提供 **Cloudflare Pages + Functions + D1** 部署方式：保留原登录、加密设置、记录、行情、学习 AI 和同步接口，云端运行不依赖本机 Node 服务。完整步骤见 [Cloudflare 部署与迁移指南](docs/CLOUDFLARE.md)。上传源码使用 `npm run cloudflare:package`，私密数据库迁移使用 `npm run cloudflare:export`；私人导出和密钥不能上传 GitHub。原 Windows/Node 部署仍可使用。

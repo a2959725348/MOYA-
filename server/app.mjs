@@ -15,6 +15,8 @@ import { refreshBalances } from './adapters.mjs';
 import { createMarketCoordinator } from './market.mjs';
 import { studyChat } from './chat.mjs';
 import { generateReminders } from './reminders.mjs';
+import { saveDemand,importDemands,demandStoredSchema,restoreDemand,prepareAnalysis,requestDemandAnalysis,persistAnalysis,validationMessage } from './demands.mjs';
+import { reserveAIRequest,recordAnalysisCost } from './ai-limits.mjs';
 
 const publicPaths=new Set(['/api/auth/status','/api/auth/setup','/api/auth/login']);
 const writeMethods=new Set(['POST','PUT','PATCH','DELETE']);
@@ -63,10 +65,10 @@ export async function createApp(options={}) {
     if(!publicPaths.has(route)&&!request.authenticated)return reply.code(401).send({error:'请先登录'});
   });
   app.setErrorHandler((error,request,reply)=>{
-    if(error instanceof ZodError)return reply.code(400).send({error:'提交字段无效，请检查必填项、日期和数值',code:'VALIDATION_ERROR'});
+    if(error instanceof ZodError)return reply.code(400).send({error:validationMessage(error),code:'VALIDATION_ERROR'});
     const status=error.statusCode||500;
     if(status>=500)request.log.error({code:error.code||'SERVER_ERROR'},'Request failed');
-    reply.code(status).send({error:status>=500?'服务暂时不可用':error.message});
+    reply.code(status).send({error:status>=500?'服务暂时不可用':error.message,...(error.code==='ESTIMATED_BUDGET_REACHED'?{code:error.code}:{})});
   });
   const settings=()=>{
     const stored=store.get('settings',settingsDefaults),result=structuredClone(stored);
@@ -120,9 +122,10 @@ export async function createApp(options={}) {
     return {...Object.fromEntries(Object.keys(collections).map(c=>[c,store.list(c)])),codex:snapshotState(store),quotes:store.get('quotes',[]).filter(visible),quoteHistory:store.get('quoteHistory',[]).filter(visible).slice(-1000),settings:config,sync:{connected:!!config.agent.lastSeen&&Date.now()-Date.parse(config.agent.lastSeen)<600000,lastSeen:config.agent.lastSeen}};
   });
   for(const [collection,schema] of Object.entries(collections)) {
-    app.post(`/api/records/${collection}`,async request=>{if(store.list(collection).length>=10000)throw fail('记录数量达到上限',413);const record=store.save(collection,schema.parse(request.body));if(collection==='watchlist')market.invalidate();return {record};});
+    app.post(`/api/records/${collection}`,async request=>{if(collection==='demands')return {record:store.transaction(()=>saveDemand(store,request.body))};if(store.list(collection).length>=10000)throw fail('记录数量达到上限',413);const record=store.save(collection,schema.parse(request.body));if(collection==='watchlist')market.invalidate();return {record};});
     app.patch(`/api/records/${collection}/:id`,async request=>{
       const original=store.find(collection,request.params.id);if(!original)throw fail('记录不存在',404);
+      if(collection==='demands')return {record:store.transaction(()=>saveDemand(store,request.body,original.id))};
       // Parse only the explicit input object here: Zod partial schemas can inject defaults for omitted keys.
       const changes=z.record(z.string(),z.unknown()).parse(request.body);const record=store.save(collection,schema.parse({...fields(original),...changes}),original.id);if(collection==='watchlist')market.invalidate();return {record};
     });
@@ -156,16 +159,32 @@ export async function createApp(options={}) {
     const validated={};
     for(const [collection,list] of Object.entries(body.backup.records)) {
       if(!collections[collection])throw fail('备份包含未知集合');
-      validated[collection]=list.map(record=>{const meta=recordMeta.parse({id:record?.id,createdAt:record?.createdAt,updatedAt:record?.updatedAt});return {...collections[collection].parse(fields(record)),...meta};});
+      validated[collection]=list.map(record=>{const meta=recordMeta.parse({id:record?.id,createdAt:record?.createdAt,updatedAt:record?.updatedAt});return {...(collection==='demands'?demandStoredSchema:collections[collection]).parse(fields(record)),...meta};});
     }
     if(body.backup.codex!=null){const c=body.backup.codex;if(c.syncedAt!==null){codexSchema.parse({eventId:'backup',observedAt:c.syncedAt,rateLimits:c.rateLimits,rateLimitsByLimitId:c.rateLimitsByLimitId,dailyUsageBuckets:c.dailyUsageBuckets,...(c.error?{error:c.error}:{})});}}
-    const counts={};store.transaction(()=>{for(const [collection,list] of Object.entries(validated)){counts[collection]=0;for(const record of list){const existing=store.find(collection,record.id);if(!existing||Date.parse(record.updatedAt)>Date.parse(existing.updatedAt)){store.save(collection,record,record.id,{preserveMetadata:true});counts[collection]++;}}}});
+    const counts={};store.transaction(()=>{for(const [collection,list] of Object.entries(validated)){counts[collection]=0;for(const record of list){const existing=store.find(collection,record.id);if(!existing||Date.parse(record.updatedAt)>Date.parse(existing.updatedAt)){if(collection==='demands'){if(restoreDemand(store,record))counts[collection]++;}else{store.save(collection,record,record.id,{preserveMetadata:true});counts[collection]++;}}}}});
     // Quota snapshot from a backup is not a live observation; retain current assistant state.
     if(validated.watchlist)market.invalidate();return {ok:true,counts};
   });
   app.post('/api/providers/balances/refresh',async()=>refreshBalances(store,vault,fetcher));
   app.post('/api/market/refresh',async()=>market.refresh());
   app.post('/api/study/chat',{config:{rateLimit:{max:10,timeWindow:'1 minute'}}},async(request,reply)=>studyChat(request,reply,{store,vault,fetcher,settings:settings()}));
+  app.post('/api/demands/import',async request=>importDemands(store,request.body));
+  app.post('/api/demands/:id/analyze',async request=>{
+    z.object({}).strict().parse(request.body);
+    const accountingEvent=token();
+    const reserved=store.transaction(()=>{const result=prepareAnalysis(store,request.params.id,settings().ai,vault);reserveAIRequest(store,result.ai);return result;});
+    const analysis=await requestDemandAnalysis({...reserved,fetcher});
+    // Successful paid usage survives a later session/source rejection. This
+    // independent transaction stores accounting only, never stale answer text.
+    store.transaction(()=>recordAnalysisCost(store,reserved.record,analysis,accountingEvent));
+    return store.transaction(()=>{
+      if(!store.db.prepare('SELECT 1 FROM sessions WHERE hash=? AND expires>?').get(request.sessionHash,Date.now()))throw fail('请先登录',401);
+      const current=store.find('demands',reserved.record.id);
+      if(!current||current.updatedAt!==reserved.record.updatedAt||current.text!==reserved.record.text||current.sourceUrl!==reserved.record.sourceUrl)throw fail('需求在分析期间已修改或删除，请重新分析',409);
+      return {record:persistAnalysis(store,reserved.record,analysis)};
+    });
+  });
   if(options.root&&existsSync(resolve(options.root,'index.html'))) {
     await app.register(staticFiles,{root:resolve(options.root),prefix:'/',index:['index.html']});
     app.setNotFoundHandler((request,reply)=>request.url.startsWith('/api/')?reply.code(404).send({error:'接口不存在'}):reply.sendFile('index.html'));
