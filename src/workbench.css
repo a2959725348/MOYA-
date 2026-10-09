@@ -53,7 +53,7 @@
 .task-row{display:flex;align-items:center;gap:12px;padding:16px 0;border-bottom:1px solid var(--border)}
 .task-list .task-row:last-child{border-bottom:0}
 .task-check{flex-shrink:0;height:20px;width:20px;border:1px solid var(--border);background:var(--card);border-radius:5px;display:grid;place-items:center;color:white}
-.task-check.checked{background:var(--primary);border-color:var(--primary)}
+.task-check.checked{background:var(--primary);border-color:var(--primary);color:var(--primary-foreground)}
 .task-body{flex:1;min-width:0}
 .task-body>strong{font-size:13px;font-weight:500;display:block;overflow-wrap:anywhere}
 .task-body>span{display:block;font-size:12px;color:var(--muted-foreground);margin-top:6px}
@@ -72,7 +72,7 @@
 .mini-quote{text-align:right}
 .mini-quote strong{font-size:14px;font-variant-numeric:tabular-nums}
 .positive{color:#53a488!important}
-.negative{color:#db8285!important}
+.negative{color:var(--danger)!important}
 .dashboard-foot{display:flex;justify-content:space-between;margin-top:25px;font-size:12px;color:var(--muted-foreground)}
 .dashboard-foot>span:first-child{display:flex;align-items:center;gap:6px}
 .status-dot{display:inline-block;height:6px;width:6px;border-radius:50%;background:var(--muted-foreground)}
