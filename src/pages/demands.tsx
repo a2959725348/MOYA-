@@ -5,6 +5,7 @@ import {dateTime,money} from '../lib/domain'
 import {categoryLabels,sourceLabels,statusLabels,filterDemands,evaluateDemands,parseDemandImport,syntheticDemands,type DemandFilters} from '../lib/demands'
 import type {Demand,DemandCategory,Consultation} from '../lib/types'
 import {Panel,Button,Badge,SectionTitle,Modal,Empty} from '../components/common'
+import HeyboxAdmin from '../components/heybox-admin'
 
 const categories=Object.entries(categoryLabels)
 const consultationStatuses={new:'待处理',answered:'已答复',closed:'已关闭'}
@@ -27,7 +28,9 @@ function ConsultationForm({record,run,onClose,disabled}:{record:Consultation|nul
  return <form className="demand-form" onSubmit={async e=>{e.preventDefault();if(await run(async()=>{if(!consent)throw new Error('请确认问题由对方自愿提出并同意记录');await save('consultations',{question,alias,note,status,consentConfirmed:true},record?.id)}))onClose()}}><label className="field"><span>自愿提出的问题 *</span><textarea required maxLength={4000} rows={5} value={question} onChange={e=>setQuestion(e.target.value)} placeholder="记录对方自愿提出的具体问题，并去除个人信息"/></label><div className="form-grid"><label className="field"><span>匿名代称（选填）</span><input maxLength={80} value={alias} onChange={e=>setAlias(e.target.value)} placeholder="自定义代称，不填实名或账号"/></label><label className="field"><span>处理状态</span><select value={status} onChange={e=>setStatus(e.target.value as Consultation['status'])}>{Object.entries(consultationStatuses).map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label></div><label className="field"><span>处理备注（选填）</span><textarea rows={3} maxLength={2000} value={note} onChange={e=>setNote(e.target.value)} placeholder="记录已核实的信息与后续处理，不填联系方式"/></label><label className="demand-consent"><input type="checkbox" required checked={consent} onChange={e=>setConsent(e.target.checked)}/><span>对方自愿提出问题并同意记录；这些文字已去标识化，不包含联系或身份信息。</span></label><div className="dialog-footer"><Button type="button" variant="outline" onClick={onClose} disabled={disabled}>取消</Button><Button type="submit" disabled={disabled}>保存咨询</Button></div></form>
 }
 
-export default function Demands(){
+export default function Demands(){return <HeyboxAdmin><DemandRecords/></HeyboxAdmin>}
+
+export function DemandRecords(){
  const {state,demo,busy,action,save,remove,notify,setPage}=useWorkbench()
  const [tab,setTab]=useState<'analysis'|'consultations'|'guide'>('analysis'),[pending,setPending]=useState(false),[error,setError]=useState('')
  const locked=useRef(false)

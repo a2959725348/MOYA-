@@ -13,7 +13,7 @@ const Demands=lazy(()=>import('./pages/demands'))
 const Study=lazy(()=>import('./pages/study'))
 const Tasks=lazy(()=>import('./pages/tasks'))
 const SettingsPage=lazy(()=>import('./pages/settings'))
-const nav=[{id:'overview',name:'总览',en:'Overview',icon:LayoutDashboard},{id:'quota',name:'AI 额度与余额',en:'AI resources',icon:Terminal},{id:'demands',name:'需求与咨询',en:'Demands and consultations',icon:MessageSquare},{id:'study',name:'学习中心',en:'Study',icon:GraduationCap},{id:'tasks',name:'学习通任务',en:'Assignments',icon:ListTodo},{id:'settings',name:'设置',en:'Settings',icon:Settings}] as const
+const nav=[{id:'overview',name:'总览',en:'Overview',icon:LayoutDashboard},{id:'quota',name:'AI 额度与余额',en:'AI resources',icon:Terminal},{id:'demands',name:'小黑盒后台',en:'Heybox demands and consultations',icon:MessageSquare},{id:'study',name:'学习中心',en:'Study',icon:GraduationCap},{id:'tasks',name:'学习通任务',en:'Assignments',icon:ListTodo},{id:'settings',name:'设置',en:'Settings',icon:Settings}] as const
 function ThemeSwitch(){
  const [theme,setTheme]=useState<Theme>(()=>document.documentElement.style.colorScheme==='light'?'light':'dark')
  return <button className="icon-button" aria-label={theme==='light'?'切换深色模式':'切换浅色模式'} onClick={()=>{const next=theme==='light'?'dark':'light';applyTheme(next);setTheme(next)}}>{theme==='light'?<Moon size={18}/>:<Sun size={18}/>}</button>

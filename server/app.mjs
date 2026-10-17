@@ -17,6 +17,7 @@ import { studyChat } from './chat.mjs';
 import { generateReminders } from './reminders.mjs';
 import { saveDemand,importDemands,demandStoredSchema,restoreDemand,prepareAnalysis,requestDemandAnalysis,persistAnalysis,validationMessage } from './demands.mjs';
 import { reserveAIRequest,recordAnalysisCost } from './ai-limits.mjs';
+import { getHeyboxAdmin,saveHeyboxConfig,saveHeyboxReview,patchHeyboxReview,appendHeyboxLog,ensureDemandRevision } from './heybox-admin.mjs';
 
 const publicPaths=new Set(['/api/auth/status','/api/auth/setup','/api/auth/login']);
 const writeMethods=new Set(['POST','PUT','PATCH','DELETE']);
@@ -116,20 +117,24 @@ export async function createApp(options={}) {
       store.set('settings',current);
     });if(input.market||(input.clearSecrets||[]).some(name=>name.startsWith('market.')))market.invalidate();return settings();
   });
+  app.get('/api/heybox/admin',async()=>getHeyboxAdmin(store));
+  app.put('/api/heybox/config',async request=>store.transaction(()=>saveHeyboxConfig(store,request.body)));
+  app.post('/api/heybox/reviews',async request=>store.transaction(()=>saveHeyboxReview(store,request.body)));
+  app.patch('/api/heybox/reviews/:id',async request=>store.transaction(()=>patchHeyboxReview(store,request.params.id,request.body)));
   app.get('/api/state',async()=>{
     const config=settings();generateReminders(store,config);
     const watched=new Set(store.list('watchlist').map(w=>`${w.market}:${w.symbol}`)),visible=q=>watched.has(`${q.market}:${q.symbol}`);
     return {...Object.fromEntries(Object.keys(collections).map(c=>[c,store.list(c)])),codex:snapshotState(store),quotes:store.get('quotes',[]).filter(visible),quoteHistory:store.get('quoteHistory',[]).filter(visible).slice(-1000),settings:config,sync:{connected:!!config.agent.lastSeen&&Date.now()-Date.parse(config.agent.lastSeen)<600000,lastSeen:config.agent.lastSeen}};
   });
   for(const [collection,schema] of Object.entries(collections)) {
-    app.post(`/api/records/${collection}`,async request=>{if(collection==='demands')return {record:store.transaction(()=>saveDemand(store,request.body))};if(store.list(collection).length>=10000)throw fail('记录数量达到上限',413);const record=store.save(collection,schema.parse(request.body));if(collection==='watchlist')market.invalidate();return {record};});
+    app.post(`/api/records/${collection}`,async request=>{if(collection==='demands')return {record:store.transaction(()=>{const record=saveDemand(store,request.body);appendHeyboxLog(store,'demand_saved',record.id);return record;})};if(store.list(collection).length>=10000)throw fail('记录数量达到上限',413);const record=store.save(collection,schema.parse(request.body));if(collection==='watchlist')market.invalidate();return {record};});
     app.patch(`/api/records/${collection}/:id`,async request=>{
       const original=store.find(collection,request.params.id);if(!original)throw fail('记录不存在',404);
-      if(collection==='demands')return {record:store.transaction(()=>saveDemand(store,request.body,original.id))};
+      if(collection==='demands')return {record:store.transaction(()=>{const record=saveDemand(store,request.body,original.id);appendHeyboxLog(store,'demand_saved',record.id);return record;})};
       // Parse only the explicit input object here: Zod partial schemas can inject defaults for omitted keys.
       const changes=z.record(z.string(),z.unknown()).parse(request.body);const record=store.save(collection,schema.parse({...fields(original),...changes}),original.id);if(collection==='watchlist')market.invalidate();return {record};
     });
-    app.delete(`/api/records/${collection}/:id`,async request=>{if(!store.remove(collection,request.params.id))throw fail('记录不存在',404);if(collection==='watchlist')market.invalidate();return {ok:true};});
+    app.delete(`/api/records/${collection}/:id`,async request=>{if(collection==='demands')return store.transaction(()=>{if(!store.remove(collection,request.params.id))throw fail('记录不存在',404);appendHeyboxLog(store,'demand_deleted',request.params.id);return {ok:true};});if(!store.remove(collection,request.params.id))throw fail('记录不存在',404);if(collection==='watchlist')market.invalidate();return {ok:true};});
   }
   app.post('/api/agent/token',async()=>{const value=token();store.set('agentTokenHash',hashToken(value));store.set('agentLastSeen',null);return {token:value};});
   const observed=(scope,body)=>{
@@ -169,7 +174,7 @@ export async function createApp(options={}) {
   app.post('/api/providers/balances/refresh',async()=>refreshBalances(store,vault,fetcher));
   app.post('/api/market/refresh',async()=>market.refresh());
   app.post('/api/study/chat',{config:{rateLimit:{max:10,timeWindow:'1 minute'}}},async(request,reply)=>studyChat(request,reply,{store,vault,fetcher,settings:settings()}));
-  app.post('/api/demands/import',async request=>importDemands(store,request.body));
+  app.post('/api/demands/import',async request=>importDemands(store,request.body,()=>appendHeyboxLog(store,'demands_imported')));
   app.post('/api/demands/:id/analyze',async request=>{
     z.object({}).strict().parse(request.body);
     const accountingEvent=token();
@@ -182,7 +187,8 @@ export async function createApp(options={}) {
       if(!store.db.prepare('SELECT 1 FROM sessions WHERE hash=? AND expires>?').get(request.sessionHash,Date.now()))throw fail('请先登录',401);
       const current=store.find('demands',reserved.record.id);
       if(!current||current.updatedAt!==reserved.record.updatedAt||current.text!==reserved.record.text||current.sourceUrl!==reserved.record.sourceUrl)throw fail('需求在分析期间已修改或删除，请重新分析',409);
-      return {record:persistAnalysis(store,reserved.record,analysis)};
+      const record=ensureDemandRevision(store,persistAnalysis(store,reserved.record,analysis),reserved.record.updatedAt);
+      appendHeyboxLog(store,'analysis_completed',record.id);return {record};
     });
   });
   if(options.root&&existsSync(resolve(options.root,'index.html'))) {

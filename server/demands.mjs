@@ -38,10 +38,11 @@ export function saveDemand(store,value,id){
   if(prior&&Date.parse(saved.updatedAt)<=Date.parse(prior.updatedAt))return store.save('demands',{...saved,updatedAt:new Date(Date.parse(prior.updatedAt)+1).toISOString()},saved.id,{preserveMetadata:true});
   return saved;
 }
-export function importDemands(store,body){
+export function importDemands(store,body,onImported){
   // Parse the whole batch before touching the store.
   const {items}=demandImportSchema.parse(body);let imported=0,duplicates=0;const records=[];
-  store.transaction(()=>{for(const input of items){const same=duplicate(store,input);if(same){duplicates++;records.push(same);}else{records.push(saveDemand(store,input));imported++;}}});
+  // Optional synchronous side effects (such as audit events) share the batch transaction.
+  store.transaction(()=>{for(const input of items){const same=duplicate(store,input);if(same){duplicates++;records.push(same);}else{records.push(saveDemand(store,input));imported++;}}onImported?.();});
   return {imported,duplicates,records};
 }
 export function restoreDemand(store,record){

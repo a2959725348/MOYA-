@@ -11,6 +11,7 @@ import { handleChat } from './chat.mjs';
 import { budgetDatabase } from './budget.mjs';
 import { saveDemand,importDemands,demandStoredSchema,restoreDemand,prepareAnalysis,requestDemandAnalysis,persistAnalysis,validationMessage } from '../server/demands.mjs';
 import { reserveAIRequest,recordAnalysisCost } from '../server/ai-limits.mjs';
+import { getHeyboxAdmin,saveHeyboxConfig,saveHeyboxReview,patchHeyboxReview,appendHeyboxLog,ensureDemandRevision } from '../server/heybox-admin.mjs';
 
 const publicPaths=new Set(['/api/auth/status','/api/auth/setup','/api/auth/login']);
 const writeMethods=new Set(['POST','PUT','PATCH','DELETE']);
@@ -98,6 +99,11 @@ async function routeLocal(store,env,requestInfo,body) {
     if(input.deepseek||input.openai||(input.clearSecrets||[]).some(name=>name.startsWith('deepseek.')||name.startsWith('openai.')))store.set('balanceRefreshGeneration',token());
     return settings(store,vault);
   }
+  if(method==='GET'&&path==='/api/heybox/admin')return getHeyboxAdmin(store);
+  if(method==='PUT'&&path==='/api/heybox/config')return saveHeyboxConfig(store,body);
+  if(method==='POST'&&path==='/api/heybox/reviews')return saveHeyboxReview(store,body);
+  const reviewMatch=path.match(/^\/api\/heybox\/reviews\/([^/]+)$/);
+  if(method==='PATCH'&&reviewMatch)return patchHeyboxReview(store,reviewMatch[1],body);
   if(method==='GET'&&path==='/api/state'){
     const config=settings(store,vault);generateReminders(store,config);
     const watched=new Set(store.list('watchlist').map(w=>`${w.market}:${w.symbol}`)),visible=q=>watched.has(`${q.market}:${q.symbol}`);
@@ -109,7 +115,7 @@ async function routeLocal(store,env,requestInfo,body) {
     if(method==='POST'&&!id){if(collection==='demands')result={record:saveDemand(store,body)};else{if(store.list(collection).length>=10000)throw fail('记录数量达到上限',413);result={record:store.save(collection,schema.parse(body))};}}
     else if(method==='PATCH'&&id){const original=store.find(collection,id);if(!original)throw fail('记录不存在',404);const changes=z.record(z.string(),z.unknown()).parse(body);result={record:collection==='demands'?saveDemand(store,changes,id):store.save(collection,schema.parse({...fields(original),...changes}),id)};}
     else if(method==='DELETE'&&id){if(!store.remove(collection,id))throw fail('记录不存在',404);result={ok:true};}
-    if(result){if(collection==='watchlist')invalidateMarket(store);return result;}
+    if(result){if(collection==='demands')appendHeyboxLog(store,method==='DELETE'?'demand_deleted':'demand_saved',id??result.record?.id);if(collection==='watchlist')invalidateMarket(store);return result;}
   }
   if(method==='POST'&&path==='/api/agent/token'){const value=token();store.set('agentTokenHash',hashToken(value));store.set('agentLastSeen',null);return {token:value};}
   if(method==='POST'&&path==='/api/sync/codex'){
@@ -124,7 +130,7 @@ async function routeLocal(store,env,requestInfo,body) {
     store.event('tasks',input.eventId,input.observedAt);store.set('syncObserved:tasks',input.observedAt);store.set('agentLastSeen',new Date().toISOString());return {ok:true,count:input.tasks.length};
   }
   if(method==='GET'&&path==='/api/backup')return {version:1,exportedAt:new Date().toISOString(),records:Object.fromEntries(Object.keys(collections).map(c=>[c,store.list(c)])),codex:snapshotState(store)};
-  if(method==='POST'&&path==='/api/demands/import')return importDemands(store,body);
+  if(method==='POST'&&path==='/api/demands/import')return importDemands(store,body,()=>appendHeyboxLog(store,'demands_imported'));
   if(method==='POST'&&path==='/api/backup/restore'){
     const input=z.object({backup:z.object({version:z.literal(1),exportedAt:iso,records:z.record(z.string(),z.array(z.unknown()).max(10000)),codex:z.unknown().optional()}).strict(),mode:z.literal('merge')}).strict().parse(body),validated={};
     for(const [collection,list] of Object.entries(input.backup.records)){
@@ -200,7 +206,8 @@ export async function handleRequest(request,env,ctx={},options={}) {
         authorize(store,requestInfo);
         const current=store.find('demands',reserved.record.id);
         if(!current||current.updatedAt!==reserved.record.updatedAt||current.text!==reserved.record.text||current.sourceUrl!==reserved.record.sourceUrl)throw fail('需求在分析期间已修改或删除，请重新分析',409);
-        return {record:persistAnalysis(store,reserved.record,analysis)};
+        const record=ensureDemandRevision(store,persistAnalysis(store,reserved.record,analysis),reserved.record.updatedAt);
+        appendHeyboxLog(store,'analysis_completed',record.id);return {record};
       });return json(result);
     }
     if(method==='POST'&&path==='/api/study/chat'){
