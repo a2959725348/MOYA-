@@ -8,7 +8,7 @@ export function readTheme(): Theme {
 export function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle('dark', theme === 'dark')
   document.documentElement.style.colorScheme = theme
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#09090b' : '#f4f4f5')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#101213' : '#f5f7f5')
   try { localStorage.setItem('workbench-theme', theme) } catch { /* Theme switching also works with unavailable storage. */ }
 }
 

@@ -1,0 +1,52 @@
+/* Scope beats legacy administrator colors even when its chunk loads later. */
+.workspace-v2 .hba{--background:inherit;--foreground:inherit;--card:inherit;--card-foreground:inherit;--muted:inherit;--muted-foreground:inherit;--border:inherit;--primary:inherit;--primary-foreground:inherit;--secondary:inherit;--secondary-foreground:inherit;--accent:inherit;--accent-foreground:inherit;--input:inherit;color-scheme:inherit;background:transparent;color:var(--foreground);border:0;border-radius:0;padding:0;font-size:13px;box-shadow:none}
+.workspace-v2 .hba :is(button,input,select,textarea):focus-visible{outline-color:var(--primary)}
+.workspace-v2 .hba :is(.hba-card,.hba-stat,.panel,.demand-record,.demand-intro){background:var(--card);border-color:var(--border);border-radius:9px;box-shadow:none}
+.workspace-v2 .hba .hba-brand h1{color:var(--foreground);font-size:28px;font-weight:600;letter-spacing:-.8px}
+.workspace-v2 .hba .hba-mark{width:42px;height:46px;border-radius:9px;color:var(--primary);background:var(--accent);border-color:color-mix(in srgb,var(--primary) 30%,var(--border))}
+.workspace-v2 .hba .hba-eyebrow{color:var(--workspace-dim);font-size:9px;letter-spacing:1.3px}
+.workspace-v2 .hba .hba-brand p{color:var(--muted-foreground);font-size:12px}
+.workspace-v2 .hba .hba-pill{background:var(--accent);color:var(--primary);border-color:var(--border);border-radius:5px;font-size:10px}
+.workspace-v2 .hba .hba-pill i{background:var(--primary)}
+.workspace-v2 .hba :is(.hba-status-strip,.hba-capabilities,.hba-evidence){background:var(--muted);border-color:var(--border);border-radius:7px;color:var(--muted-foreground)}
+.workspace-v2 .hba :is(.hba-status-item,.hba-status-tail,.hba-status-strip small,.hba-muted,.hba-brand p,.hba-card>header p,.hba-events small,.hba-events time,.hba-stat small,.hba-workflow p,.hba-source-meta,.hba-source-meta code,.hba-review-list small,.hba-log-list small,.hba-form small,.hba-review-state,.hba-footer,.hba-capabilities p,.hba-preview-result dt,.hba-preview-result dd){color:var(--muted-foreground)}
+.workspace-v2 .hba :is(.hba-card>header h2,.hba-section-heading h2,.hba-workflow strong,.hba-events strong,.hba-stat>strong,.hba-small-title,.hba-evidence h3,.hba-capabilities strong,.hba-form label>span,.hba-field>span,.hba-review-list strong,.hba-empty h3,.hba-manual .section-title h1){color:var(--foreground)}
+.workspace-v2 .hba :is(.hba-stat>div,.hba-form-footer>span,.hba-empty p){color:var(--muted-foreground)}
+.workspace-v2 .hba :is(.hba-quiet,.hba-review-list button,.hba-capability-tags>span,.hba-manual .segmented){background:var(--card);border-color:var(--border);color:var(--muted-foreground)}
+.workspace-v2 .hba .hba-primary{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary);border-radius:6px;box-shadow:none}
+.workspace-v2 .hba .hba-primary:hover:enabled{background:color-mix(in srgb,var(--primary) 85%,var(--foreground));border-color:var(--primary)}
+.workspace-v2 .hba :is(.hba-button,.hba-icon-button){border-radius:6px;font-weight:500}
+.workspace-v2 .hba .hba-quiet:hover:enabled{background:var(--secondary);border-color:var(--border)}
+.workspace-v2 .hba .hba-tabs{border-color:var(--border);gap:5px}
+.workspace-v2 .hba .hba-tabs button{color:var(--muted-foreground);border-radius:6px}
+.workspace-v2 .hba .hba-tabs button:hover{background:var(--muted);color:var(--foreground)}
+.workspace-v2 .hba :is(.hba-tabs button.selected,.hba-review-list button.selected,.hba-manual .segmented button.selected){background:var(--accent);color:var(--primary);border-color:color-mix(in srgb,var(--primary) 30%,var(--border))}
+.workspace-v2 .hba .hba-tabs small{color:var(--primary);background:var(--secondary)}
+.workspace-v2 .hba .hba-stat>strong{font-size:30px;font-weight:500}
+.workspace-v2 .hba .hba-stat>div svg{color:var(--primary)}
+.workspace-v2 .hba :is(.hba-link,.hba-link:hover:enabled,.hba-icon-button,.hba-icon-button:hover,.hba-review-list .hba-unsaved,.hba-manual a){color:var(--primary)}
+.workspace-v2 .hba .hba-icon-button:hover{background:var(--secondary)}
+.workspace-v2 .hba :is(.hba-workflow li,.hba-events li,.hba-form-footer,.hba-log-list li,.hba-footer){border-color:var(--border)}
+.workspace-v2 .hba :is(.hba-workflow li>span,.hba-log-icon,.hba-empty>svg){background:var(--accent);border-color:var(--border);color:var(--primary);border-radius:7px}
+.workspace-v2 .hba .hba-event-dot{background:var(--primary)}
+.workspace-v2 .hba .hba-status-strip strong{color:var(--foreground)}
+.workspace-v2 .hba .hba-status-strip svg{color:var(--muted-foreground)}
+.workspace-v2 .hba :is(.hba-form textarea,.hba-form input,.hba-form select,.hba-field textarea,.hba-field input,.hba-field select,.hba-manual .demand-form textarea,.hba-manual .field textarea,.hba-manual .field input,.hba-manual .field select){background:var(--background);color:var(--foreground);border-color:var(--border);border-radius:6px}
+.workspace-v2 .hba :is(.hba-form textarea:focus,.hba-form input:focus,.hba-form select:focus,.hba-field textarea:focus,.hba-field input:focus,.hba-field select:focus){border-color:var(--primary)}
+.workspace-v2 .hba :is(.hba-quote,.hba-draft-preview,.hba-evidence blockquote,.hba-manual .demand-original){background:var(--background);border-color:var(--border);color:var(--foreground)}
+.workspace-v2 .hba .hba-quote{border-left-color:var(--primary)}
+.workspace-v2 .hba .hba-evidence p{color:var(--foreground)}
+.workspace-v2 .hba .hba-review-list button:hover{border-color:var(--primary)}
+.workspace-v2 .hba :is(.hba-message,.hba-neutral,.hba-manual .demand-limit,.hba-manual .demand-analysis){border-color:var(--border);background:var(--muted);color:var(--muted-foreground)}
+.workspace-v2 .hba .hba-message p{color:inherit}
+.workspace-v2 .hba :is(.hba-good,.hba-success,.hba-approve){color:var(--green);background:color-mix(in srgb,var(--green) 9%,var(--card));border-color:color-mix(in srgb,var(--green) 30%,var(--border))}
+.workspace-v2 .hba .hba-approve:hover:enabled{background:color-mix(in srgb,var(--green) 16%,var(--card))}
+.workspace-v2 .hba :is(.hba-warn,.hba-warning){color:var(--amber);background:color-mix(in srgb,var(--amber) 8%,var(--card));border-color:color-mix(in srgb,var(--amber) 28%,var(--border))}
+.workspace-v2 .hba :is(.hba-error,.hba-reject){color:var(--danger);background:var(--danger-bg);border-color:color-mix(in srgb,var(--danger) 35%,var(--border))}
+.workspace-v2 .hba .hba-reject:hover:enabled{background:color-mix(in srgb,var(--danger) 17%,var(--card))}
+.workspace-v2 .hba code,.workspace-v2 .hba time{color:var(--muted-foreground)}
+.workspace-v2 .hba .hba-section-heading{margin-top:24px}
+.workspace-v2 .hba .hba-card{padding:20px}
+.workspace-v2 .hba .hba-card>header h2{font-size:14px;font-weight:550}
+.workspace-v2 .hba .hba-capabilities{padding:15px 18px}
+@media(max-width:767px){.workspace-v2 .hba{padding:0;border-radius:0}.workspace-v2 .hba .hba-brand h1{font-size:24px}.workspace-v2 .hba .hba-card{padding:17px 14px}.workspace-v2 .hba .hba-mark{width:38px;height:42px}.workspace-v2 .hba .hba-button,.workspace-v2 .hba .hba-tabs button,.workspace-v2 .hba .hba-icon-button,.workspace-v2 .hba .hba-link{min-height:44px}.workspace-v2 .hba .hba-icon-button{min-width:44px}.workspace-v2 .hba .hba-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}.workspace-v2 .hba .hba-link{font-size:11px}.workspace-v2 .hba .hba-card>header{flex-wrap:wrap}.workspace-v2 .hba .hba-capabilities{padding:14px}.workspace-v2 .hba .hba-status-tail{margin-left:0}.workspace-v2 .hba .hba-hero-actions{max-width:none;flex-wrap:wrap}.workspace-v2 .hba .hba-hero{flex-wrap:wrap}.workspace-v2 .hba .hba-tabs button{font-size:11px;padding:7px 5px}}

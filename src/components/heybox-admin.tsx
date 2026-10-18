@@ -6,6 +6,7 @@ import {dateTime} from '../lib/domain'
 import {categoryLabels} from '../lib/demands'
 import {canApproveReview,configEditorDirty,configEditorFrom,draftEditorDirty,draftEditorFrom,isReviewStale,matchManualText,parseKeywordInput,reconcileConfigEditor,reconcileDraftEditor,renderManualTemplate,type ConfigEditor,type DraftEditor,type HeyboxAdminData,type HeyboxConfig,type HeyboxReview} from '../lib/heybox-admin'
 import './heybox-admin.css'
+import './heybox-workspace.css'
 
 const tabs=[['overview','总览',Layers],['config','任务配置',Settings2],['manual','人工需求',FileText],['reviews','草稿审核',ClipboardCheck],['logs','操作日志',Activity]] as const
 type Tab=typeof tabs[number][0]
