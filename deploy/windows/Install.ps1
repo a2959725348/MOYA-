@@ -45,7 +45,7 @@ $PackageRoot = [IO.Path]::GetFullPath($PackageRoot).TrimEnd('\')
 if ($PackageRoot -eq $InstallRoot -or $PackageRoot.StartsWith($InstallRoot + '\', [StringComparison]::OrdinalIgnoreCase) -or $InstallRoot.StartsWith($PackageRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Package and installation folders must be separate.'
 }
-foreach ($required in @('dist\index.html', 'server\index.mjs', 'package.json', 'package-lock.json')) {
+foreach ($required in @('dist\index.html', 'server\index.mjs', 'shared\english-data.mjs', 'package.json', 'package-lock.json')) {
     if (-not (Test-Path -LiteralPath (Join-Path $PackageRoot $required) -PathType Leaf)) { throw "Incomplete package: $required" }
 }
 $plan = [ordered]@{ installRoot=$InstallRoot; host='127.0.0.1'; port=4318; origin='http://127.0.0.1:4318'; publicHttpsEnabled=$false; task='PersonalWorkbench-App' }
@@ -72,7 +72,7 @@ if (-not (Test-Path -LiteralPath $envPath)) {
 }
 $releaseDir = Join-Path $InstallRoot ('releases\' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8))
 New-Item -ItemType Directory -Path $releaseDir | Out-Null
-foreach ($entry in @('dist', 'server', 'package.json', 'package-lock.json')) {
+foreach ($entry in @('dist', 'server', 'shared', 'package.json', 'package-lock.json')) {
     Copy-Item -LiteralPath (Join-Path $PackageRoot $entry) -Destination $releaseDir -Recurse
 }
 foreach ($entry in @('Start-App.ps1', 'Status.ps1')) {

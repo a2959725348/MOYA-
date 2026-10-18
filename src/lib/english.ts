@@ -1,0 +1,9 @@
+import type {EnglishCard,EnglishSnapshot,WordDiff} from './english-types'
+export const shanghaiDay=(now:number)=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(now)
+export const dueCards=(cards:EnglishCard[],now:number)=>cards.filter(c=>Number.isFinite(Date.parse(c.due))&&Date.parse(c.due)<=now).sort((a,b)=>Date.parse(a.due)-Date.parse(b.due))
+export function intervalLabel(date:string,now:number){const ms=Date.parse(date)-now;if(!Number.isFinite(ms))return '时间待更新';if(ms<=0)return '现在';if(ms<60000)return '不足 1 分钟';if(ms<3600000)return `${Math.round(ms/60000)} 分钟`;if(ms<86400000)return `${Math.round(ms/3600000)} 小时`;return `${Math.round(ms/86400000)} 天`}
+export function dateLabel(date:string){return Number.isFinite(Date.parse(date))?new Date(date).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'时间待更新'}
+export function sentenceContext(paragraph:string,position:number){const before=paragraph.slice(0,position),start=Math.max(before.lastIndexOf('.'),before.lastIndexOf('!'),before.lastIndexOf('?'))+1;const rest=paragraph.slice(position),end=rest.search(/[.!?]/);return paragraph.slice(start,end<0?undefined:position+end+1).trim()}
+export function diffLabel(part:WordDiff){switch(part.type){case 'missing':return {text:`＋${part.expected??''}`,title:`漏写：${part.expected??''}`};case 'extra':return {text:part.actual??'',title:`多写：${part.actual??''}`};case 'wrong':return {text:`${part.actual??''} → ${part.expected??''}`,title:`应为：${part.expected??''}`};default:return {text:part.actual??part.expected??'',title:'正确'}}}
+export const newerSnapshot=(current:EnglishSnapshot|null,incoming:EnglishSnapshot)=>!current||incoming.revision>=current.revision?incoming:current
+export function retainActionForRetry(error:unknown){const status=(error as {status?:number})?.status;return status===undefined||status>=500}

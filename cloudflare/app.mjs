@@ -12,6 +12,7 @@ import { budgetDatabase } from './budget.mjs';
 import { saveDemand,importDemands,demandStoredSchema,restoreDemand,prepareAnalysis,requestDemandAnalysis,persistAnalysis,validationMessage } from '../server/demands.mjs';
 import { reserveAIRequest,recordAnalysisCost } from '../server/ai-limits.mjs';
 import { getHeyboxAdmin,saveHeyboxConfig,saveHeyboxReview,patchHeyboxReview,appendHeyboxLog,ensureDemandRevision } from '../server/heybox-admin.mjs';
+import { englishSnapshot,englishAction,englishExport } from '../server/english-study.mjs';
 
 const publicPaths=new Set(['/api/auth/status','/api/auth/setup','/api/auth/login']);
 const writeMethods=new Set(['POST','PUT','PATCH','DELETE']);
@@ -100,6 +101,9 @@ async function routeLocal(store,env,requestInfo,body) {
     return settings(store,vault);
   }
   if(method==='GET'&&path==='/api/heybox/admin')return getHeyboxAdmin(store);
+  if(method==='GET'&&path==='/api/study/english')return englishSnapshot(store);
+  if(method==='GET'&&path==='/api/study/english/export')return englishExport(store);
+  if(method==='POST'&&path==='/api/study/english/actions')return englishAction(store,body);
   if(method==='PUT'&&path==='/api/heybox/config')return saveHeyboxConfig(store,body);
   if(method==='POST'&&path==='/api/heybox/reviews')return saveHeyboxReview(store,body);
   const reviewMatch=path.match(/^\/api\/heybox\/reviews\/([^/]+)$/);

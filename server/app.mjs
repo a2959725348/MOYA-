@@ -18,6 +18,7 @@ import { generateReminders } from './reminders.mjs';
 import { saveDemand,importDemands,demandStoredSchema,restoreDemand,prepareAnalysis,requestDemandAnalysis,persistAnalysis,validationMessage } from './demands.mjs';
 import { reserveAIRequest,recordAnalysisCost } from './ai-limits.mjs';
 import { getHeyboxAdmin,saveHeyboxConfig,saveHeyboxReview,patchHeyboxReview,appendHeyboxLog,ensureDemandRevision } from './heybox-admin.mjs';
+import { englishSnapshot,englishAction,englishExport } from './english-study.mjs';
 
 const publicPaths=new Set(['/api/auth/status','/api/auth/setup','/api/auth/login']);
 const writeMethods=new Set(['POST','PUT','PATCH','DELETE']);
@@ -118,6 +119,9 @@ export async function createApp(options={}) {
     });if(input.market||(input.clearSecrets||[]).some(name=>name.startsWith('market.')))market.invalidate();return settings();
   });
   app.get('/api/heybox/admin',async()=>getHeyboxAdmin(store));
+  app.get('/api/study/english',async()=>englishSnapshot(store));
+  app.get('/api/study/english/export',async()=>englishExport(store));
+  app.post('/api/study/english/actions',async request=>store.transaction(()=>englishAction(store,request.body)));
   app.put('/api/heybox/config',async request=>store.transaction(()=>saveHeyboxConfig(store,request.body)));
   app.post('/api/heybox/reviews',async request=>store.transaction(()=>saveHeyboxReview(store,request.body)));
   app.patch('/api/heybox/reviews/:id',async request=>store.transaction(()=>patchHeyboxReview(store,request.params.id,request.body)));

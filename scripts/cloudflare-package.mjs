@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot=fileURLToPath(new URL('../',import.meta.url));
 const run=promisify(execFile);
-const sourceDirectories=['cloudflare','functions','docs','src','agent','server','tests','scripts','public','deploy'];
-const sourceFiles=['package.json','package-lock.json','README.md','THIRD_PARTY_NOTICES.md','LICENSE','LICENSE.shadcn-admin','.gitignore','.dockerignore','.env.example','.dev.vars.example','.nvmrc','index.html','tsconfig.json','vite.config.ts','wrangler.jsonc','Dockerfile','compose.yaml'];
+const sourceDirectories=['cloudflare','functions','docs','src','shared','agent','server','tests','scripts','public','deploy'];
+const sourceFiles=['package.json','package-lock.json','README.md','THIRD_PARTY_NOTICES.md','LICENSE','LICENSE.shadcn-admin','LICENSE.ts-fsrs','.gitignore','.dockerignore','.env.example','.dev.vars.example','.nvmrc','index.html','tsconfig.json','vite.config.ts','wrangler.jsonc','Dockerfile','compose.yaml'];
 const excludedDirectories=new Set(['data','backups','backup','node_modules','.git','.wrangler','dist','installers','.cache','.codex','.superpowers']);
 function excluded(name,directory) {
   const lower=name.toLowerCase();

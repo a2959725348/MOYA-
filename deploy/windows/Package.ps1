@@ -10,7 +10,7 @@ New-Item -ItemType Directory -Path (Join-Path $packageDir 'deploy\windows') -For
 Push-Location $projectDir
 try {
     if (-not $SkipBuild) { & npm.cmd run build; if ($LASTEXITCODE -ne 0) { throw 'Build failed.' } }
-    foreach ($entry in @('dist','server','package.json','package-lock.json')) {
+    foreach ($entry in @('dist','server','shared','package.json','package-lock.json')) {
         Copy-Item -LiteralPath (Join-Path $projectDir $entry) -Destination $packageDir -Recurse
     }
     foreach ($entry in @('Install.ps1','Start-App.ps1','Status.ps1','README.md','Caddyfile.example')) {

@@ -12,6 +12,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
+COPY --from=build /app/shared ./shared
 RUN mkdir -p /app/data && chown -R node:node /app
 USER node
 EXPOSE 4318

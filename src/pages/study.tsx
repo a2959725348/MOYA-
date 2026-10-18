@@ -5,10 +5,15 @@ import {dateKey,dateTime,compact,money} from '../lib/domain'
 import {SSEParser} from '../lib/sse'
 import {Panel,Button,Badge,SectionTitle,Empty,RecordEditor,EditButton,DeleteButton,Progress,planFields,type Field} from '../components/common'
 import type {Goal,Plan,Mistake} from '../lib/types'
+import EnglishCenter from '../components/english-center'
 const goalFields:Field[]=[{key:'exam',label:'目标类型',type:'select',default:'postgraduate',options:[{value:'postgraduate',label:'研究生入学考试'},{value:'cet4',label:'英语四级'},{value:'cet6',label:'英语六级'}]},{key:'title',label:'目标名称',required:true,placeholder:'目标院校、专业或分数'},{key:'targetDate',label:'目标日期',type:'date',nullable:true},{key:'subjects',label:'科目（用顿号或逗号分隔）',placeholder:'数学、英语、专业课'},{key:'dailyMinutes',label:'每日学习目标（分钟）',type:'number',default:120,min:1,max:1440,required:true}]
 const mistakeFields:Field[]=[{key:'subject',label:'科目',required:true},{key:'nextReview',label:'下次复习时间',type:'datetime-local',nullable:true},{key:'question',label:'题目 / 易错知识点',type:'textarea',required:true},{key:'answer',label:'答案与正确思路',type:'textarea'},{key:'notes',label:'错误原因与复习备注',type:'textarea'}]
 const modes=[{id:'tutor',name:'知识辅导',icon:GraduationCap},{id:'plan',name:'学习计划',icon:CalendarDays},{id:'essay',name:'作文批改',icon:NotebookPen},{id:'reading',name:'阅读训练',icon:BookOpen},{id:'translation',name:'翻译练习',icon:Sparkles}]
 export default function Study(){
+ const [legacy,setLegacy]=useState(false)
+ return legacy?<><div className="study-legacy-return"><Button variant="outline" onClick={()=>setLegacy(false)}><ArrowUpRight size={14}/>返回英语训练</Button></div><LegacyStudy/></>:<EnglishCenter onOpenLegacy={()=>setLegacy(true)}/>
+}
+function LegacyStudy(){
  const {state,demo,setPage,save,notify,refresh,timer,setTimer}=useWorkbench(),[tab,setTab]=useState('ai'),[goalOpen,setGoalOpen]=useState(false),[goalEdit,setGoalEdit]=useState<Goal|null>(null),[planOpen,setPlanOpen]=useState(false),[planEdit,setPlanEdit]=useState<Plan|null>(null),[mistakeOpen,setMistakeOpen]=useState(false),[mistakeEdit,setMistakeEdit]=useState<Mistake|null>(null),[mode,setMode]=useState('tutor'),[selectedGoal,setSelectedGoal]=useState(''),[message,setMessage]=useState(''),[reply,setReply]=useState(''),[sending,setSending]=useState(false),[streamError,setStreamError]=useState(''),[streamUsage,setStreamUsage]=useState<Record<string,unknown>|null>(null),[saveContent,setSaveContent]=useState(''),[now,setNow]=useState(Date.now()),[savingTimer,setSavingTimer]=useState(false)
  const abort=useRef<AbortController|null>(null),chatEnd=useRef<HTMLDivElement>(null)
  useEffect(()=>{const tick=setInterval(()=>setNow(Date.now()),1000);return()=>{clearInterval(tick);abort.current?.abort()}},[])

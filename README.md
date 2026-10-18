@@ -106,3 +106,7 @@ npm run build
 复用了 GitHub 项目 [satnaing/shadcn-admin](https://github.com/satnaing/shadcn-admin) 的 Button / Card / Badge 组件（MIT），并保留许可与具体版本，详见 `THIRD_PARTY_NOTICES.md` 与 `LICENSE.shadcn-admin`。栖台的中文信息结构、页面与样式单独实现，没有复制上游演示数据为你的真实数据。
 
 测试范围与实际验收记录见 [docs/VERIFICATION.md](docs/VERIFICATION.md)。
+
+## 英语学习中心
+
+学习中心提供单词拼写、点击查词阅读、逐句听写及 ts-fsrs 间隔复习，实际练习记录保存到登录账户。首版含 12 词、一篇原创短文及 3 句合成语音；原 AI 学习助手、计划与错题保留在“AI 助手与学习计划”入口。使用方法、备份范围和后续材料维护见 [docs/ENGLISH-CENTER.md](docs/ENGLISH-CENTER.md)。

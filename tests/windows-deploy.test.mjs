@@ -12,9 +12,10 @@ function fixture(t) {
   const root=mkdtempSync(join(tmpdir(),'workbench-deploy-'));
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const source=join(root,'package');
-  mkdirSync(join(source,'dist'),{recursive:true}); mkdirSync(join(source,'server'));
+  mkdirSync(join(source,'dist'),{recursive:true}); mkdirSync(join(source,'server')); mkdirSync(join(source,'shared'));
   writeFileSync(join(source,'dist/index.html'),'<html>fixture</html>');
   writeFileSync(join(source,'server/index.mjs'),'// fixture');
+  writeFileSync(join(source,'shared/english-data.mjs'),'export const englishWords=[];');
   writeFileSync(join(source,'package.json'),'{}'); writeFileSync(join(source,'package-lock.json'),'{}');
   return {root,source,target:join(root,'installation')};
 }
@@ -38,6 +39,7 @@ test('Windows preparation preserves existing database and credentials on update'
   assert.equal(readFileSync(join(f.target,'data/vault.key'),'utf8'),'existing key');
   const active=JSON.parse(readFileSync(join(f.target,'deployment.json'),'utf8'));
   assert.equal(readFileSync(join(active.appDir,'dist/index.html'),'utf8'),'<html>fixture</html>');
+  assert.equal(readFileSync(join(active.appDir,'shared/english-data.mjs'),'utf8'),'export const englishWords=[];');
 });
 test('Windows installer rejects drive root and unrelated nonempty directories',{skip:process.platform!=='win32'},t=>{
   const f=fixture(t);
