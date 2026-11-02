@@ -14,4 +14,4 @@
 
 上述项目使用 [Mixkit Stock Video Free License](https://mixkit.co/license/#videoFree)。本项目对其裁切、调色、首尾交叠，并离线合成原创光束底片；在主页设计中作为背景使用。没有运行 Canvas/WebGL 海浪渲染。
 
-发布时继续使用已有 Cloudflare Pages 项目 `moya`，构建命令仍为 `npm run build`，输出目录仍为 `dist`。保留原 DB、VAULT_KEY、SETUP_TOKEN、APP_ORIGIN，不建立新数据库。Windows 使用既有安装器的版本目录更新，保留安装根目录 `.env` 与 `data`。
+发布时继续使用已有 Cloudflare Pages 项目 `moya`，构建命令仍为 `npm run build`，输出目录仍为 `dist`。保留原 DB、VAULT_KEY、SETUP_TOKEN、APP_ORIGIN，不建立新数据库。此次仅发布 Cloudflare，不更新阿里云服务器。
