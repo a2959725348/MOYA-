@@ -52,8 +52,14 @@ async function rateLimit(db,key,max,windowMs) {
   if(!row||row.count>max)throw fail('请求过于频繁，请稍后再试',429);
 }
 async function localRequest(store,env,requestInfo,body) {
-  try{const result=await routeLocal(store,env,requestInfo,body);await store.commit();return result;}
-  catch(error){if(!(error instanceof ConflictError))throw error;return withStore(env.DB,latest=>routeLocal(latest,env,requestInfo,body),{retries:4});}
+  try{const result=await routeLocal(store,env,requestInfo,body);settingsStage(requestInfo,'settings_commit');await store.commit();return result;}
+  catch(error){if(!(error instanceof ConflictError))throw error;settingsStage(requestInfo,'settings_load_or_commit_retry');return withStore(env.DB,async latest=>{const result=await routeLocal(latest,env,requestInfo,body);settingsStage(requestInfo,'settings_load_or_commit_retry');return result;},{retries:4});}
+}
+function settingsStage(requestInfo,stage) {if(requestInfo.settingsDiagnostic)requestInfo.settingsDiagnostic.stage=stage;}
+function settingsFailure(logger,stage,error) {
+  const names=new Set(['Error','TypeError','RangeError','OperationError','NotSupportedError','DataError']);
+  const codes=new Set(['D1_ERROR','SQLITE_ERROR','ERR_CRYPTO_INVALID_KEYLEN','ERR_CRYPTO_INVALID_IV','ERR_CRYPTO_INVALID_AUTH_TAG','ERR_CRYPTO_AUTH_FAILED','ERR_OSSL_EVP_UNSUPPORTED','ERR_CRYPTO_UNKNOWN_CIPHER','ERR_INVALID_ARG_TYPE','ERR_OUT_OF_RANGE']);
+  try{logger.warn(JSON.stringify({event:'settings_save_failure',stage,errorType:names.has(error?.name)?error.name:'Error',...(codes.has(error?.code)?{errorCode:error.code}:{})}));}catch{}
 }
 function observed(store,scope,body) {
   const stamp=Date.parse(body.observedAt),now=Date.now();if(stamp>now+120000||stamp<now-7*86400000)throw fail('同步时间过旧或超出允许范围');
@@ -67,6 +73,7 @@ function authorize(store,{path,sessionHash,bearer}) {
 }
 async function routeLocal(store,env,requestInfo,body) {
   const {path,method,sessionHash}=requestInfo;authorize(store,requestInfo);
+  settingsStage(requestInfo,'vault_init');
   const vault=new Vault(store,env.VAULT_KEY);
   if(method==='GET'&&path==='/api/health')return {ok:true};
   if(method==='GET'&&path==='/api/auth/status')return {configured:!!store.get('password'),authenticated:authenticated(store,sessionHash),setupRequiresToken:true};
@@ -89,15 +96,17 @@ async function routeLocal(store,env,requestInfo,body) {
   }
   if(method==='GET'&&path==='/api/settings')return settings(store,vault);
   if(method==='PUT'&&path==='/api/settings'){
+    settingsStage(requestInfo,'settings_validate');
     const input=settingsSchema.parse(body);if(input.ai?.baseUrl!==undefined)validateEndpoint(input.ai.baseUrl,env);
     const current=structuredClone(store.get('settings',settingsDefaults));
     for(const section of ['profile','ai','deepseek','openai','market','notifications'])if(input[section])for(const [key,value] of Object.entries(input[section])){
-      const name=`${section}.${key}`;if(secretNames.includes(name)){if(value)vault.set(name,value);}else current[section][key]=value;
+      const name=`${section}.${key}`;if(secretNames.includes(name)){if(value){settingsStage(requestInfo,'settings_encrypt');vault.set(name,value);}}else current[section][key]=value;
     }
     for(const name of input.clearSecrets||[])vault.clear(name);
     current.ai.dailyBudget??=null;if(current.ai.dailyBudget!==null&&current.ai.inputPrice===0&&current.ai.outputPrice===0)throw fail('启用费用预算阈值前请配置每百万 token 的输入或输出单价');
     store.set('settings',current);if(input.market||(input.clearSecrets||[]).some(name=>name.startsWith('market.')))invalidateMarket(store);
     if(input.deepseek||input.openai||(input.clearSecrets||[]).some(name=>name.startsWith('deepseek.')||name.startsWith('openai.')))store.set('balanceRefreshGeneration',token());
+    settingsStage(requestInfo,'settings_prepare_response');
     return settings(store,vault);
   }
   if(method==='GET'&&path==='/api/heybox/admin')return getHeyboxAdmin(store);
@@ -177,10 +186,12 @@ async function providerRequest(requestInfo,env,fetcher,store) {
   },{retries:5});
 }
 export async function handleRequest(request,env,ctx={},options={}) {
+  let settingsDiagnostic=null;
   try{
     let origin;try{origin=new URL(env.APP_ORIGIN);if(origin.protocol!=='https:'||origin.origin!==env.APP_ORIGIN)throw new Error();}catch{throw fail('服务暂时不可用',503);}
     const url=new URL(request.url);if(url.origin!==origin.origin)throw fail('请求 Host 不被允许',403);
     let path;try{path=decodeURIComponent(url.pathname);}catch{throw fail('请求路径无效');}
+    if(request.method==='PUT'&&path==='/api/settings')settingsDiagnostic={stage:'environment'};
     if(path==='/health'&&request.method==='GET')return json({ok:true});
     if(!path.startsWith('/api/'))throw fail('接口不存在',404);
     if(!env.DB||!env.VAULT_KEY)throw fail('服务暂时不可用',503);
@@ -188,13 +199,15 @@ export async function handleRequest(request,env,ctx={},options={}) {
     const method=request.method;
     if(writeMethods.has(method)&&!path.startsWith('/api/sync/')&&request.headers.get('origin')!==origin.origin)throw fail('请求来源不被允许',403);
     const session=request.headers.get('cookie')?.split(';').map(s=>s.trim()).find(s=>s.startsWith('workbench_session='))?.slice('workbench_session='.length),sessionHash=session?hashToken(session):null;
-    const bearer=request.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1],requestInfo={path,method,sessionHash,bearer};
+    const bearer=request.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9_-]{43})$/)?.[1],requestInfo={path,method,sessionHash,bearer,settingsDiagnostic};
+    settingsStage(requestInfo,'database_load');
     const ip=hashToken(request.headers.get('cf-connecting-ip')||'unknown');
     await env.DB.prepare('DELETE FROM cloudflare_rate_limits WHERE key IN (SELECT key FROM cloudflare_rate_limits WHERE expires<=? LIMIT 100)').bind(Date.now()).run();
     await rateLimit(env.DB,`global:${ip}`,300,60000);
     let initial=await D1Store.open(env.DB);authorize(initial,requestInfo);
     const limits={'/api/auth/setup':[5,60000],'/api/auth/login':[10,300000],'/api/auth/password':[5,300000],'/api/study/chat':[10,60000]};
     if(method==='POST'&&limits[path])await rateLimit(env.DB,`route:${path}:${ip}`,...limits[path]);
+    settingsStage(requestInfo,'request_body');
     const body=writeMethods.has(method)?await readBody(request):undefined;
     const fetcher=transport(env,{nativeFetch:options.fetcher});
     const demandMatch=path.match(/^\/api\/demands\/([^/]+)\/analyze$/);
@@ -231,6 +244,12 @@ export async function handleRequest(request,env,ctx={},options={}) {
   }catch(error){
     if(error instanceof ZodError)return json({error:validationMessage(error),code:'VALIDATION_ERROR'},400);
     const status=error instanceof ConflictError?409:error.statusCode||500;
+    if(settingsDiagnostic&&status>=500){
+      const stage=settingsDiagnostic.stage;
+      settingsFailure(options.logger||console,stage,error);
+      const label=stage==='settings_encrypt'?'API 密钥加密':stage==='vault_init'?'加密配置初始化':stage==='settings_commit'?'数据库写入':'后端处理';
+      return json({error:`设置保存失败：${label}，请查看 Functions 日志`,code:'SETTINGS_SAVE_FAILED',stage},status);
+    }
     return json({error:status>=500?'服务暂时不可用':error instanceof ConflictError?'数据同时更新，请重试':error.message,...(error.code==='ESTIMATED_BUDGET_REACHED'?{code:error.code}:{})},status);
   }
 }

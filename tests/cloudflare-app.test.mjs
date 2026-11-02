@@ -54,6 +54,45 @@ test('edge settings encrypt secrets and validate approved endpoint hosts',async(
   assert.equal((await f.request('/api/settings',{method:'PUT',body:{ai:{dailyBudget:1}}})).status,400);
   const cleared=await (await f.request('/api/settings',{method:'PUT',body:{clearSecrets:['deepseek.apiKey']}})).json();assert.equal(cleared.deepseek.keyConfigured,false);
 });
+
+test('failed settings commits report a safe stage and preserve previously saved credentials',async t=>{
+  const entries=[];
+  const f=await fixture({logger:{warn:value=>entries.push(JSON.parse(value))}});t.after(()=>f.env.DB.close());await f.setup();
+  assert.equal((await f.request('/api/settings',{method:'PUT',body:{ai:{apiKey:'previous-private-fixture'}}})).status,200);
+  const originalBatch=f.env.DB.batch.bind(f.env.DB);
+  f.env.DB.batch=async statements=>{if(statements.some(s=>s._sql.startsWith('UPDATE cloudflare_meta')))throw Object.assign(new Error('D1_ERROR: private-fixture-data'),{code:'D1_ERROR'});return originalBatch(statements);};
+  const response=await f.request('/api/settings',{method:'PUT',body:{ai:{apiKey:'replacement-private-fixture'}}});
+  assert.equal(response.status,500);
+  assert.equal((await response.json()).code,'SETTINGS_SAVE_FAILED');
+  assert.deepEqual(entries,[{event:'settings_save_failure',stage:'settings_commit',errorType:'Error',errorCode:'D1_ERROR'}]);
+  const {D1Store}=await import('../cloudflare/store.mjs'),{Vault}=await import('../cloudflare/vault.mjs');
+  assert.equal(new Vault(await D1Store.open(f.env.DB),f.env.VAULT_KEY).get('ai.apiKey'),'previous-private-fixture');
+  assert.equal(JSON.stringify(entries).includes('private-fixture'),false);
+});
+
+test('invalid server encryption configuration reports its initialization stage without exposing the value',async t=>{
+  const entries=[];
+  const f=await fixture({logger:{warn:value=>entries.push(JSON.parse(value))}});t.after(()=>f.env.DB.close());await f.setup();
+  f.env.VAULT_KEY='invalid-private-configuration';
+  const response=await f.request('/api/settings',{method:'PUT',body:{ai:{apiKey:'private-api-fixture'}}});
+  assert.equal(response.status,500);
+  assert.equal((await response.json()).code,'SETTINGS_SAVE_FAILED');
+  assert.deepEqual(entries,[{event:'settings_save_failure',stage:'vault_init',errorType:'Error'}]);
+  assert.equal(JSON.stringify(entries).includes('private'),false);
+});
+
+test('encryption failures are distinct from database failures and never log submitted API keys',async t=>{
+  const entries=[];
+  const f=await fixture({logger:{warn:value=>entries.push(JSON.parse(value))}});t.after(()=>f.env.DB.close());await f.setup();
+  const {Vault}=await import('../cloudflare/vault.mjs');
+  t.mock.method(Vault.prototype,'set',()=>{throw Object.assign(new TypeError('submitted-private-fixture'),{code:'ERR_INVALID_ARG_TYPE'});});
+  const response=await f.request('/api/settings',{method:'PUT',body:{ai:{apiKey:'submitted-private-fixture'}}});
+  const body=await response.json();
+  assert.equal(response.status,500);assert.equal(body.stage,'settings_encrypt');
+  assert.match(body.error,/API 密钥加密/);
+  assert.deepEqual(entries,[{event:'settings_save_failure',stage:'settings_encrypt',errorType:'TypeError',errorCode:'ERR_INVALID_ARG_TYPE'}]);
+  assert.equal(JSON.stringify({body,entries}).includes('submitted-private-fixture'),false);
+});
 test('edge sync deduplicates, rejects old snapshots, and retains last good quota',async()=>{
   const f=await fixture();await f.setup();const {token}=await (await f.request('/api/agent/token',{method:'POST'})).json();
   const send=body=>f.request('/api/sync/codex',{method:'POST',body,headers:{Authorization:`Bearer ${token}`,Origin:'https://agent.invalid'}});
