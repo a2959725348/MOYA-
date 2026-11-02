@@ -197,7 +197,12 @@ export async function createApp(options={}) {
   });
   if(options.root&&existsSync(resolve(options.root,'index.html'))) {
     await app.register(staticFiles,{root:resolve(options.root),prefix:'/',index:['index.html']});
-    app.setNotFoundHandler((request,reply)=>request.url.startsWith('/api/')?reply.code(404).send({error:'接口不存在'}):reply.sendFile('index.html'));
+    app.setNotFoundHandler((request,reply)=>{
+      const pathname=new URL(request.url,origin).pathname;
+      if(pathname==='/api'||pathname.startsWith('/api/'))return reply.code(404).send({error:'接口不存在'});
+      if((pathname==='/workbench'||pathname.startsWith('/workbench/'))&&existsSync(resolve(options.root,'workbench/index.html')))return reply.sendFile('workbench/index.html');
+      return reply.sendFile('index.html');
+    });
   }
   await app.ready();return app;
 }
