@@ -49,7 +49,7 @@ function upstream(chunks) {
 async function call(state, fetcher = async () => upstream([complete]), body = requestBody, signal, sessionHash) {
   return chat.handleChat(new Request('https://workbench.example/api/study/chat', {
     method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  }), state.env, state.ctx, { body, fetcher, sessionHash });
+  }), state.env, state.ctx, { body, fetcher, sessionHash, logger: state.logger });
 }
 
 function events(text) {
@@ -138,6 +138,30 @@ test('upstream HTTP errors return sanitized JSON and consume the reservation', e
   assert.equal((await response.text()).includes('fixture-secret'), false);
   assert.equal((await state.records()).length, 0);
   assert.equal((await call(state)).status, 429);
+});
+
+test('diagnostics distinguish secret decryption from provider HTTP failures without logging private data', enabled, async t => {
+  const state = await setup(t);
+  const entries = [];
+  state.logger = { warn: value => entries.push(JSON.parse(value)) };
+  const response = await call(state, async () => new Response('secret-provider-body fixture-secret', { status: 401 }));
+  assert.equal(response.status, 502);
+  assert.deepEqual(entries, [{ event: 'study_chat_failure', stage: 'upstream_connect', reason: 'upstream_http', upstreamStatus: 401 }]);
+  entries.length = 0;
+  state.env.VAULT_KEY = Buffer.alloc(32, 8).toString('base64');
+  const failed = await call(state, async () => assert.fail('Decryption failure must not reach provider'));
+  assert.equal(failed.status, 502);
+  assert.deepEqual(entries, [{ event: 'study_chat_failure', stage: 'secret_decrypt', reason: 'configuration_read' }]);
+  assert.equal(JSON.stringify(entries).includes('fixture-secret'), false);
+});
+
+test('network diagnostics never log an arbitrary fetch exception or paid request content', enabled, async t => {
+  const state = await setup(t);
+  const entries = [];
+  state.logger = { warn: value => entries.push(JSON.parse(value)) };
+  const response = await call(state, async () => { throw new Error('https://private.invalid/?key=fixture-secret'); });
+  assert.equal(response.status, 502);
+  assert.deepEqual(entries, [{ event: 'study_chat_failure', stage: 'upstream_connect', reason: 'network_or_endpoint' }]);
 });
 
 test('recorded estimated daily budget blocks the next call without another reservation', enabled, async t => {

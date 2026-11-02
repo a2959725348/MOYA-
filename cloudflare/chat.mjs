@@ -25,6 +25,13 @@ const connectionError = 'AI 服务连接失败，请检查网络、密钥、模�
 const streamError = 'AI 响应中断或源数据无效，未保存不完整回答';
 const json = (status, body) => Response.json(body, { status, headers: { 'X-Content-Type-Options': 'nosniff' } });
 
+// Only fixed labels and the numeric HTTP status are logged. Provider bodies,
+// exception messages, URLs, credentials and conversation content stay private.
+function diagnose(logger, stage, reason, upstreamStatus) {
+  try { logger.warn(JSON.stringify({ event: 'study_chat_failure', stage, reason,
+    ...(Number.isInteger(upstreamStatus) ? { upstreamStatus } : {}) })); } catch {}
+}
+
 function abortable(operation, signal) {
   if (signal.aborted) return Promise.reject(new Error('ABORTED'));
   return new Promise((resolve, reject) => {
@@ -34,13 +41,13 @@ function abortable(operation, signal) {
   });
 }
 
-export async function handleChat(request, env, ctx, { body, fetcher = fetch, sessionHash } = {}) {
+export async function handleChat(request, env, ctx, { body, fetcher = fetch, sessionHash, logger = console } = {}) {
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) return json(400, { error: '学习请求格式无效' });
   body = parsed.data;
 
   // Only the database work may retry. A paid upstream request is made exactly once.
-  let reserved;
+  let reserved, stage = 'configuration_or_reservation';
   try {
     reserved = await withStore(env.DB, async store => {
       if (sessionHash !== undefined) {
@@ -49,9 +56,11 @@ export async function handleChat(request, env, ctx, { body, fetcher = fetch, ses
       }
       const stored = store.get('settings', settingsDefaults);
       const ai = { ...settingsDefaults.ai, ...stored.ai };
+      stage = 'secret_decrypt';
       const vault = new Vault(store, env.VAULT_KEY);
       const key = vault.get('ai.apiKey') || (ai.provider === 'deepseek' ? vault.get('deepseek.apiKey') : ai.provider === 'openai' ? vault.get('openai.apiKey') : null);
       if (!key) return { response: json(400, { error: '请先配置学习 AI 的 API 密钥' }) };
+      stage = 'configuration_prepare';
       const goal = body.goalId ? store.find('goals', body.goalId) : null;
       if (body.goalId && !goal) return { response: json(400, { error: '学习目标不存在' }) };
       const history = store.list('chatMessages');
@@ -61,9 +70,11 @@ export async function handleChat(request, env, ctx, { body, fetcher = fetch, ses
         ...history.slice(-8).map(({ role, content }) => ({ role, content: content.slice(0, 4000) })),
         { role: 'user', content: body.message },
       ];
+      stage = 'configuration_or_reservation';
       return { ai, key, messages };
     }, { retries: 5 });
   } catch {
+    diagnose(logger, stage, 'configuration_read');
     return json(502, { error: connectionError });
   }
   if (reserved.response) return reserved.response;
@@ -80,6 +91,7 @@ export async function handleChat(request, env, ctx, { body, fetcher = fetch, ses
   let upstream;
   let reader;
   try {
+    stage = 'upstream_connect';
     if (abortController.signal.aborted) throw new Error('ABORTED');
     upstream = await abortable(fetcher(`${ai.baseUrl.replace(/\/$/, '')}/chat/completions`, {
       method: 'POST', signal: abortController.signal,
@@ -88,11 +100,13 @@ export async function handleChat(request, env, ctx, { body, fetcher = fetch, ses
     }), abortController.signal);
     if (!upstream.ok || !upstream.body) throw new Error('UPSTREAM_ERROR');
     reader = upstream.body.getReader();
+    stage = 'save_user_message';
     await withStore(env.DB, async store => {
       if (abortController.signal.aborted) throw new Error('ABORTED');
       store.save('chatMessages', { role: 'user', content: body.message, model: ai.model });
     }, { retries: 5 });
   } catch {
+    diagnose(logger, stage, abortController.signal.aborted ? 'aborted' : upstream && !upstream.ok ? 'upstream_http' : stage === 'save_user_message' ? 'storage_write' : 'network_or_endpoint', upstream?.status);
     cleanup();
     abortController.abort();
     if (reader) void reader.cancel().catch(() => {});
@@ -108,6 +122,7 @@ export async function handleChat(request, env, ctx, { body, fetcher = fetch, ses
         if (!cancelled) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       };
       const pump = async () => {
+        let streamStage = 'stream_read';
         let text = '', usage = null, buffer = '', complete = false, size = 0;
         const decoder = new TextDecoder();
         const parse = block => {
@@ -147,6 +162,7 @@ export async function handleChat(request, env, ctx, { body, fetcher = fetch, ses
             cost: (usage.prompt_tokens * ai.inputPrice + usage.completion_tokens * ai.outputPrice) / 1_000_000,
             currency: ai.currency,
           } : {};
+          streamStage = 'save_assistant_message';
           await withStore(env.DB, async store => {
             if (abortController.signal.aborted) throw new Error('ABORTED');
             store.save('chatMessages', { role: 'assistant', content: text, model: ai.model, ...(usage ? { tokens: usage.total_tokens, ...estimate } : {}) });
@@ -154,6 +170,7 @@ export async function handleChat(request, env, ctx, { body, fetcher = fetch, ses
           if (abortController.signal.aborted) throw new Error('ABORTED');
           send({ type: 'done', ...(usage ? { usage: { ...usage, ...estimate, ...('cost' in estimate ? { costSource: 'configured_price_estimate' } : {}) } } : {}) });
         } catch {
+          diagnose(logger, streamStage, abortController.signal.aborted ? 'aborted' : 'stream_or_storage');
           send({ type: 'error', error: streamError });
         } finally {
           cleanup();
