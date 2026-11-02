@@ -28,3 +28,13 @@ PUT /api/settings 的服务端内部错误记录 settings_save_failure，只含�
 - database_load / request_body / environment：在设置处理之前的读取或环境阶段。
 
 验证范围：在正常加密环境中，替换无法解密的单个凭据可恢复；这一结论不覆盖线上加密写入或数据库本身失败。出现无法保存时，应查看该事件再决定修复，不反复更换 API Key，也不随机生成或轮换全局 VAULT_KEY。
+
+## 2026-11-02 加密兼容修复
+
+使用固定虚拟数据的生产自检 /health?check=crypto 确认：旧版 Vault 加密返回 not_implemented，解密跳过；原生 Web Crypto 返回 ok。本地当前版本的 workerd 能运行 Node cipher，不等同于生产构建提供的兼容实现。
+
+Cloudflare Vault 已改用原生 crypto.subtle AES-GCM，读写方法现在为异步。使用原 VAULT_KEY、96 位随机 IV、128 位认证标签；保留 Base64 的 iv、tag、data 三字段，不迁移或覆盖旧凭据。原 Node/SQLite Vault 不变。余额和行情适配器兼容同步与异步密钥读取，学习与需求分析已等待解密完成。
+
+回归测试覆盖：在 Node cipher 导出全部为未实现占位函数的 Worker 中仍完成加解密；本地旧密文读取；新密文由本地 Node Vault 读取；不同 IV；错误密钥和认证标签篡改拒绝。没有明文回退。
+
+/health 默认响应不变；check=crypto 的自检只使用公共固定测试向量和临时内存，不接触环境密钥或数据库。加密修复发布后应看到 encrypt、decrypt、webCrypto 均为 ok。真实用户凭据仍需通过设置保存或学习请求验证。

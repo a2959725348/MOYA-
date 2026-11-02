@@ -5,7 +5,7 @@ const validDate=value=>typeof value==='string'&&Number.isFinite(Date.parse(value
 export async function refreshBalances(store,vault,fetcher) {
   const results=[];
   for(const provider of ['deepseek','openai']) {
-    const key=vault.get(`${provider}.apiKey`);
+    const key=await vault.get(`${provider}.apiKey`);
     if(!key){results.push({provider,status:'unconfigured',message:'请配置服务端 API 密钥'});continue;}
     try {
       if(provider==='deepseek') {
@@ -36,7 +36,7 @@ export async function refreshMarkets(store,vault,fetcher,settings,signal) {
   const results=[],quotes=[];
   const all=store.list('watchlist');
   for(const market of ['US','CN']) {
-    const key=market==='US'?vault.get('market.alpacaKey'):vault.get('market.tushareToken'),secret=market==='US'?vault.get('market.alpacaSecret'):null;
+    const key=market==='US'?await vault.get('market.alpacaKey'):await vault.get('market.tushareToken'),secret=market==='US'?await vault.get('market.alpacaSecret'):null;
     if(!key||market==='US'&&!secret){results.push({market,status:'unconfigured',message:'请配置行情密钥（A 股分钟接口需要对应权限）'});continue;}
     const watch=all.filter(x=>x.market===market);
     if(!watch.length){results.push({market,status:'ok',message:'自选列表为空'});continue;}

@@ -1,7 +1,7 @@
 import { z,ZodError } from 'zod';
 import { timingSafeEqual } from 'node:crypto';
 import { D1Store,withStore,ConflictError } from './store.mjs';
-import { Vault,secretNames } from './vault.mjs';
+import { Vault,secretNames,learningKey } from './vault.mjs';
 import { hashPassword,verifyPassword,hashToken,token } from '../server/auth.mjs';
 import { collections,recordMeta,settingsDefaults,settingsSchema,codexSchema,tasksSyncSchema,iso } from '../server/schema.mjs';
 import { refreshBalances,refreshMarkets } from '../server/adapters.mjs';
@@ -101,7 +101,7 @@ async function routeLocal(store,env,requestInfo,body) {
     const input=settingsSchema.parse(body);if(input.ai?.baseUrl!==undefined)validateEndpoint(input.ai.baseUrl,env);
     const current=structuredClone(store.get('settings',settingsDefaults));
     for(const section of ['profile','ai','deepseek','openai','market','notifications'])if(input[section])for(const [key,value] of Object.entries(input[section])){
-      const name=`${section}.${key}`;if(secretNames.includes(name)){if(value){settingsStage(requestInfo,'settings_encrypt');vault.set(name,value);}}else current[section][key]=value;
+      const name=`${section}.${key}`;if(secretNames.includes(name)){if(value){settingsStage(requestInfo,'settings_encrypt');await vault.set(name,value);}}else current[section][key]=value;
     }
     for(const name of input.clearSecrets||[])vault.clear(name);
     current.ai.dailyBudget??=null;if(current.ai.dailyBudget!==null&&current.ai.inputPrice===0&&current.ai.outputPrice===0)throw fail('启用费用预算阈值前请配置每百万 token 的输入或输出单价');
@@ -215,7 +215,7 @@ export async function handleRequest(request,env,ctx={},options={}) {
     if(method==='POST'&&demandMatch){
       z.object({}).strict().parse(body);
       const accountingEvent=token();
-      const reserved=await withStore(env.DB,store=>{authorize(store,requestInfo);const result=prepareAnalysis(store,demandMatch[1],settings(store,new Vault(store,env.VAULT_KEY)).ai,new Vault(store,env.VAULT_KEY));reserveAIRequest(store,result.ai);return result;});
+      const reserved=await withStore(env.DB,async store=>{authorize(store,requestInfo);const vault=new Vault(store,env.VAULT_KEY),config=settings(store,vault),key=await learningKey(vault,config.ai.provider);const result=prepareAnalysis(store,demandMatch[1],config.ai,{get:name=>name==='ai.apiKey'?key:null});reserveAIRequest(store,result.ai);return result;});
       const analysis=await requestDemandAnalysis({...reserved,fetcher,signal:request.signal});
       // Separate accounting from guarded answer attachment. The stable event
       // identity prevents counting again if this database callback retries.

@@ -6,6 +6,7 @@ import {Vault as LocalVault} from '../server/vault.mjs';
 import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {createDecipheriv} from 'node:crypto';
 const {D1Store,withStore,ConflictError}=await import('../cloudflare/store.mjs').catch(()=>({}));
 const {Vault}=await import('../cloudflare/vault.mjs').catch(()=>({}));
 const {budgetDatabase}=await import('../cloudflare/budget.mjs').catch(()=>({}));
@@ -37,10 +38,28 @@ test('Cloudflare vault decrypts existing local AES settings and preserves cipher
   try {const lv=new LocalVault(local,dir);lv.set('ai.apiKey','test-private-api-key');
     const store=await D1Store.open(db);store.set('secret:ai.apiKey',local.get('secret:ai.apiKey'));
     const key=readFileSync(join(dir,'vault.key')).toString('base64'),vault=new Vault(store,key);
-    assert.equal(vault.get('ai.apiKey'),'test-private-api-key');vault.set('deepseek.apiKey','other-private');await store.commit();
+    assert.equal(await vault.get('ai.apiKey'),'test-private-api-key');await vault.set('deepseek.apiKey','other-private');await store.commit();
+    local.set('secret:deepseek.apiKey',store.get('secret:deepseek.apiKey'));
+    assert.equal(lv.get('deepseek.apiKey'),'other-private');
     assert.ok(!JSON.stringify(await db.prepare('SELECT * FROM kv').all()).includes('other-private'));
     assert.throws(()=>new Vault(store,'invalid'));vault.clear('ai.apiKey');assert.equal(vault.has('ai.apiKey'),false);
   }finally{local.close();db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('Web Crypto AES-GCM retains native ciphertext compatibility, fresh IVs and authentication',async t=>{
+  const db=await createTestDB();t.after(()=>db.close());
+  const store=await D1Store.open(db),raw=Buffer.alloc(32,7),vault=new Vault(store,raw.toString('base64'));
+  const plaintext='fixture-private-密钥🔐';
+  await vault.set('ai.apiKey',plaintext);
+  const first=store.get('secret:ai.apiKey');
+  const decipher=createDecipheriv('aes-256-gcm',raw,Buffer.from(first.iv,'base64'));decipher.setAuthTag(Buffer.from(first.tag,'base64'));
+  assert.equal(Buffer.concat([decipher.update(Buffer.from(first.data,'base64')),decipher.final()]).toString('utf8'),plaintext);
+  await vault.set('ai.apiKey',plaintext);
+  assert.notEqual(store.get('secret:ai.apiKey').iv,first.iv);
+  await assert.rejects(new Vault(store,Buffer.alloc(32,8).toString('base64')).get('ai.apiKey'));
+  const tampered=store.get('secret:ai.apiKey'),tag=Buffer.from(tampered.tag,'base64');tag[0]^=1;tampered.tag=tag.toString('base64');store.set('secret:ai.apiKey',tampered);
+  await assert.rejects(vault.get('ai.apiKey'));
+  assert.equal(JSON.stringify(store.get('secret:ai.apiKey')).includes(plaintext),false);
 });
 
 test('large CAS retries stop before the request query budget and never publish a partial restore',async()=>{

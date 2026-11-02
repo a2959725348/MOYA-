@@ -79,7 +79,7 @@ test('failed settings commits report a safe stage and preserve previously saved 
   assert.equal((await response.json()).code,'SETTINGS_SAVE_FAILED');
   assert.deepEqual(entries,[{event:'settings_save_failure',stage:'settings_commit',errorType:'Error',errorCode:'D1_ERROR'}]);
   const {D1Store}=await import('../cloudflare/store.mjs'),{Vault}=await import('../cloudflare/vault.mjs');
-  assert.equal(new Vault(await D1Store.open(f.env.DB),f.env.VAULT_KEY).get('ai.apiKey'),'previous-private-fixture');
+  assert.equal(await new Vault(await D1Store.open(f.env.DB),f.env.VAULT_KEY).get('ai.apiKey'),'previous-private-fixture');
   assert.equal(JSON.stringify(entries).includes('private-fixture'),false);
 });
 

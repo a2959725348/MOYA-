@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { reserveAIRequest } from '../server/ai-limits.mjs';
 import { settingsDefaults } from '../server/schema.mjs';
 import { withStore } from './store.mjs';
-import { Vault } from './vault.mjs';
+import { Vault,learningKey } from './vault.mjs';
 
 const bodySchema = z.object({
   message: z.string().trim().min(1).max(12000),
@@ -58,7 +58,7 @@ export async function handleChat(request, env, ctx, { body, fetcher = fetch, ses
       const ai = { ...settingsDefaults.ai, ...stored.ai };
       stage = 'secret_decrypt';
       const vault = new Vault(store, env.VAULT_KEY);
-      const key = vault.get('ai.apiKey') || (ai.provider === 'deepseek' ? vault.get('deepseek.apiKey') : ai.provider === 'openai' ? vault.get('openai.apiKey') : null);
+      const key = await learningKey(vault,ai.provider);
       if (!key) return { response: json(400, { error: '请先配置学习 AI 的 API 密钥' }) };
       stage = 'configuration_prepare';
       const goal = body.goalId ? store.find('goals', body.goalId) : null;

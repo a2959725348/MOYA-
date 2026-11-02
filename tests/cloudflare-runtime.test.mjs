@@ -9,6 +9,20 @@ import {Store} from '../server/db.mjs';
 import {Vault} from '../server/vault.mjs';
 import {hashPassword} from '../server/auth.mjs';
 import {exportCloudflare} from '../scripts/cloudflare-export.mjs';
+import {build} from 'esbuild';
+
+test('Pages vault works when Node AES cipher exports are unimplemented stubs',{timeout:60000},async()=>{
+  const root=resolve('.');let mf;
+  try{
+    const result=await build({stdin:{contents:`import {Buffer} from 'node:buffer';import {checkCrypto} from './cloudflare/crypto-check.mjs';globalThis.Buffer??=Buffer;export default {async fetch(){return Response.json(await checkCrypto())}};`,resolveDir:root},bundle:true,write:false,format:'esm',platform:'browser',plugins:[{name:'legacy-node-ciphers',setup(builder){
+      builder.onResolve({filter:/^node:crypto$/},()=>({path:'legacy-node-ciphers',namespace:'crypto-stub'}));
+      builder.onLoad({filter:/.*/,namespace:'crypto-stub'},()=>({contents:`export function randomBytes(n){return crypto.getRandomValues(new Uint8Array(n))};export function createCipheriv(){throw new Error('[unenv] crypto.createCipheriv is not implemented yet!')};export function createDecipheriv(){throw new Error('[unenv] crypto.createDecipheriv is not implemented yet!')};`}));
+    }}],external:['node:buffer']});
+    mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:result.outputFiles[0].text,compatibilityDate:'2026-10-04',compatibilityFlags:['nodejs_compat']}));
+    const response=await mf.dispatchFetch('https://moyaiwork.com/health?check=crypto');
+    assert.deepEqual(await response.json(),{encrypt:'ok',decrypt:'ok',webCrypto:'ok'});
+  }finally{await mf?.dispose();}
+});
 
 test('actual Pages worker imports private data, logs in with original hash and decrypts original API key',{timeout:60000},async()=>{
   const root=resolve('.'),temp=mkdtempSync(join(tmpdir(),'cf-runtime-'));

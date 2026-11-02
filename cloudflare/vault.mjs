@@ -1,4 +1,4 @@
-import {randomBytes,createCipheriv,createDecipheriv} from 'node:crypto';
+import {Buffer} from 'node:buffer';
 
 export const secretNames=['ai.apiKey','deepseek.apiKey','openai.apiKey','market.alpacaKey','market.alpacaSecret','market.tushareToken'];
 export class Vault {
@@ -8,18 +8,29 @@ export class Vault {
     this.key=Buffer.from(encodedKey,'base64');
     if(this.key.length!==32||this.key.toString('base64')!==encodedKey)throw new Error('VAULT_KEY is invalid');
   }
-  set(name,value){
-    if(!secretNames.includes(name))throw new Error('Unknown secret');
-    const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',this.key,iv);
-    const encrypted=Buffer.concat([cipher.update(value,'utf8'),cipher.final()]);
-    this.store.set(`secret:${name}`,{iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:encrypted.toString('base64')});
+  importKey(){
+    return this.cryptoKey??=crypto.subtle.importKey('raw',Uint8Array.from(this.key),{name:'AES-GCM'},false,['encrypt','decrypt']);
   }
-  get(name){
+  async set(name,value){
+    if(!secretNames.includes(name))throw new Error('Unknown secret');
+    const iv=crypto.getRandomValues(new Uint8Array(12));
+    const sealed=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv,tagLength:128},await this.importKey(),new TextEncoder().encode(value)));
+    // Web Crypto appends the authentication tag; retain the existing three-field format.
+    this.store.set(`secret:${name}`,{iv:Buffer.from(iv).toString('base64'),tag:Buffer.from(sealed.subarray(-16)).toString('base64'),data:Buffer.from(sealed.subarray(0,-16)).toString('base64')});
+  }
+  async get(name){
     if(!secretNames.includes(name))throw new Error('Unknown secret');
     const item=this.store.get(`secret:${name}`);if(!item)return null;
-    const cipher=createDecipheriv('aes-256-gcm',this.key,Buffer.from(item.iv,'base64'));cipher.setAuthTag(Buffer.from(item.tag,'base64'));
-    return Buffer.concat([cipher.update(Buffer.from(item.data,'base64')),cipher.final()]).toString('utf8');
+    const iv=Uint8Array.from(Buffer.from(item.iv,'base64')),tag=Uint8Array.from(Buffer.from(item.tag,'base64')),data=Uint8Array.from(Buffer.from(item.data,'base64'));
+    if(iv.length!==12||tag.length!==16)throw new Error('Invalid encrypted secret');
+    const sealed=new Uint8Array(data.length+tag.length);sealed.set(data);sealed.set(tag,data.length);
+    const decrypted=await crypto.subtle.decrypt({name:'AES-GCM',iv,tagLength:128},await this.importKey(),sealed);
+    return new TextDecoder().decode(decrypted);
   }
   has(name){return !!this.store.get(`secret:${name}`);}
   clear(name){if(!secretNames.includes(name))throw new Error('Unknown secret');this.store.set(`secret:${name}`,null);}
+}
+
+export async function learningKey(vault,provider){
+  return await vault.get('ai.apiKey')||(provider==='deepseek'?await vault.get('deepseek.apiKey'):provider==='openai'?await vault.get('openai.apiKey'):null);
 }

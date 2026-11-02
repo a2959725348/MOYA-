@@ -25,7 +25,7 @@ async function setup(t, ai = {}) {
     const settings = structuredClone(settingsDefaults);
     Object.assign(settings.ai, ai);
     store.set('settings', settings);
-    new Vault(store, env.VAULT_KEY).set('ai.apiKey', 'fixture-secret');
+    await new Vault(store, env.VAULT_KEY).set('ai.apiKey', 'fixture-secret');
   });
   const pending = [];
   const ctx = { waitUntil(promise) { pending.push(promise); } };
@@ -288,7 +288,7 @@ test('the Shanghai day counter resets and provider-specific legacy credentials w
     store.set('chatCounter', { day: '2000-01-01', count: 100 });
     const vault = new Vault(store, state.env.VAULT_KEY);
     vault.clear('ai.apiKey');
-    vault.set('deepseek.apiKey', 'legacy-fixture');
+    await vault.set('deepseek.apiKey', 'legacy-fixture');
   });
   const response = await call(state, async (_url, options) => {
     assert.equal(options.headers.Authorization, 'Bearer legacy-fixture');
