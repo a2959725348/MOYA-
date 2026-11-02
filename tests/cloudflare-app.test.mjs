@@ -32,6 +32,19 @@ test('edge auth requires configured origin and setup token and persists sessions
   assert.equal((await f.request('/api/auth/login',{method:'POST',body:{password}})).status,200);
   assert.equal((await f.request('/api/state')).status,200);
 });
+
+test('optional health crypto check uses only synthetic data and identifies an unavailable cipher implementation',async t=>{
+  const f=await fixture();t.after(()=>f.env.DB.close());
+  const healthy=await f.request('/health?check=crypto');
+  assert.deepEqual(await healthy.json(),{ok:true,crypto:{encrypt:'ok',decrypt:'ok',webCrypto:'ok'}});
+  const {Vault}=await import('../cloudflare/vault.mjs');
+  t.mock.method(Vault.prototype,'set',()=>{throw new Error('[unenv] crypto.createCipheriv is not implemented yet! private-detail');});
+  const response=await f.request('/health?check=crypto');
+  const body=await response.json();
+  assert.deepEqual(body,{ok:true,crypto:{encrypt:'not_implemented',decrypt:'skipped',webCrypto:'ok'}});
+  assert.equal(JSON.stringify(body).includes('private-detail'),false);
+  assert.equal((await f.request('/api/state')).status,401);
+});
 test('edge records enforce validation, preserve omitted fields, and restore newer metadata',async()=>{
   const f=await fixture();await f.setup();
   assert.equal((await f.request('/api/records/tasks',{method:'POST',body:{title:'',dueAt:'bad'}})).status,400);

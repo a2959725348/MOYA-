@@ -13,6 +13,7 @@ import { saveDemand,importDemands,demandStoredSchema,restoreDemand,prepareAnalys
 import { reserveAIRequest,recordAnalysisCost } from '../server/ai-limits.mjs';
 import { getHeyboxAdmin,saveHeyboxConfig,saveHeyboxReview,patchHeyboxReview,appendHeyboxLog,ensureDemandRevision } from '../server/heybox-admin.mjs';
 import { englishSnapshot,englishAction,englishExport } from '../server/english-study.mjs';
+import { checkCrypto } from './crypto-check.mjs';
 
 const publicPaths=new Set(['/api/auth/status','/api/auth/setup','/api/auth/login']);
 const writeMethods=new Set(['POST','PUT','PATCH','DELETE']);
@@ -192,7 +193,7 @@ export async function handleRequest(request,env,ctx={},options={}) {
     const url=new URL(request.url);if(url.origin!==origin.origin)throw fail('请求 Host 不被允许',403);
     let path;try{path=decodeURIComponent(url.pathname);}catch{throw fail('请求路径无效');}
     if(request.method==='PUT'&&path==='/api/settings')settingsDiagnostic={stage:'environment'};
-    if(path==='/health'&&request.method==='GET')return json({ok:true});
+    if(path==='/health'&&request.method==='GET')return json({ok:true,...(url.searchParams.get('check')==='crypto'?{crypto:await checkCrypto()}:{})});
     if(!path.startsWith('/api/'))throw fail('接口不存在',404);
     if(!env.DB||!env.VAULT_KEY)throw fail('服务暂时不可用',503);
     env={...env,DB:budgetDatabase(env.DB)};

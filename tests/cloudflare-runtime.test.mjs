@@ -44,6 +44,7 @@ test('actual Pages worker imports private data, logs in with original hash and d
     await db.exec(sql);
     await assert.rejects(db.exec(sql),/overflow/i);
     const request=(path,init={})=>mf.dispatchFetch('https://moyaiwork.com'+path,init);
+    assert.deepEqual(await (await request('/health?check=crypto')).json(),{ok:true,crypto:{encrypt:'ok',decrypt:'ok',webCrypto:'ok'}});
     assert.equal((await request('/api/state')).status,401);
     const login=await request('/api/auth/login',{method:'POST',headers:{Origin:'https://moyaiwork.com','Content-Type':'application/json'},body:JSON.stringify({password:'existing runtime password'})});
     assert.equal(login.status,200,await login.text());
